@@ -13,6 +13,7 @@
 #include "envoy/http/codec.h"
 #include "envoy/stats/scope.h"
 #include "envoy/upstream/cluster_manager.h"
+#include "envoy/upstream/health_check_host_monitor.h"
 #include "envoy/upstream/upstream.h"
 
 #include "common/config/metadata.h"
@@ -320,7 +321,7 @@ TEST_F(StrictDnsClusterImplTest, Basic) {
                 address:
                   socket_address:
                     address: localhost2
-                    port_value: 11002 
+                    port_value: 11002
   )EOF";
 
   envoy::config::cluster::v3::Cluster cluster_config = parseClusterFromV3Yaml(yaml);
@@ -471,7 +472,7 @@ TEST_F(StrictDnsClusterImplTest, HostRemovalActiveHealthSkipped) {
                 address:
                   socket_address:
                     address: foo.bar.com
-                    port_value: 443 
+                    port_value: 443
   )EOF";
 
   ResolverData resolver(*dns_resolver_, dispatcher_);
@@ -1008,7 +1009,7 @@ TEST_F(StrictDnsClusterImplTest, CustomResolverFails) {
                   socket_address:
                     address: foo.bar.com
                     port_value: 443
-                    resolver_name: customresolver 
+                    resolver_name: customresolver
   )EOF";
 
   envoy::config::cluster::v3::Cluster cluster_config = parseClusterFromV3Yaml(yaml);
@@ -1167,7 +1168,7 @@ TEST_F(StrictDnsClusterImplTest, Http2UserDefinedSettingsParametersValidation) {
                 address:
                   socket_address:
                     address: localhost1
-                    port_value: 11001                     
+                    port_value: 11001
             - endpoint:
                 address:
                   socket_address:
@@ -1661,7 +1662,7 @@ TEST_F(StaticClusterImplTest, OutlierDetector) {
                 address:
                   socket_address:
                     address: 10.0.0.1
-                    port_value: 11001                  
+                    port_value: 11001
             - endpoint:
                 address:
                   socket_address:
@@ -1719,7 +1720,7 @@ TEST_F(StaticClusterImplTest, HealthyStat) {
                 address:
                   socket_address:
                     address: 10.0.0.1
-                    port_value: 11001                  
+                    port_value: 11001
             - endpoint:
                 address:
                   socket_address:
@@ -1860,7 +1861,7 @@ TEST_F(StaticClusterImplTest, UrlConfig) {
                 address:
                   socket_address:
                     address: 10.0.0.1
-                    port_value: 11001                  
+                    port_value: 11001
             - endpoint:
                 address:
                   socket_address:
@@ -1898,7 +1899,8 @@ TEST_F(StaticClusterImplTest, UrlConfig) {
   EXPECT_EQ(1UL, cluster.prioritySet().hostSetsPerPriority()[0]->hostsPerLocality().get().size());
   EXPECT_EQ(1UL,
             cluster.prioritySet().hostSetsPerPriority()[0]->healthyHostsPerLocality().get().size());
-  cluster.prioritySet().hostSetsPerPriority()[0]->hosts()[0]->healthChecker().setUnhealthy();
+  cluster.prioritySet().hostSetsPerPriority()[0]->hosts()[0]->healthChecker().setUnhealthy(
+      HealthCheckHostMonitor::UnhealthyType::ImmediateHealthCheckFail);
 }
 
 TEST_F(StaticClusterImplTest, UnsupportedLBType) {
