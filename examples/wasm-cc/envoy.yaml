@@ -37,8 +37,13 @@ static_resources:
                   "@type": "type.googleapis.com/google.protobuf.StringValue"
                   value: |
                     SecRuleEngine On
+                    SecRequestBodyAccess On
+                    SecResponseBodyAccess On
                     SecRule ARGS:param1 "test" "id:1,phase:1,log,status:400,msg:'Test rule'"
                     SecRule ARGS:param2 "test" "id:2,phase:1,deny,status:400,msg:'Test rule'"
+                    SecRule REQUEST_BODY  "blocktest" "id:3,phase:2,deny,status:400,msg:'Test rule'"
+                    SecRule RESPONSE_HEADERS:Content-Type "application/json; charset=utf-8" "id:4,phase:3,log,status:400,msg:'Test rule'"
+                    SecRule RESPONSE_BODY "@contains test" "id:5,phase:4,log,status:400,msg:'Test rule'"
                 vm_config:
                   runtime: "envoy.wasm.runtime.v8"
                   vm_id: "my_vm_id"
