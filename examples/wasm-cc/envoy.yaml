@@ -37,6 +37,9 @@ static_resources:
                   "@type": "type.googleapis.com/google.protobuf.StringValue"
                   value: |
                     SecRuleEngine On
+                    SecAuditEngine On
+                    SecAuditLogType Serial
+                    SecAuditLog /etc/modsecurity_audit.log
                     SecRequestBodyAccess On
                     SecResponseBodyAccess On
                     SecRule ARGS:param1 "test" "id:1,phase:1,log,status:400,msg:'Test rule'"

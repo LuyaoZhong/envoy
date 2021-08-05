@@ -2,10 +2,13 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <iostream>
+#include <fstream>
 
 //#include "common/http/utility.h"
 #include "modsecurity/modsecurity.h"
 #include "modsecurity/rules_set.h"
+#include "modsecurity/rule_message.h"
 #include "proxy_wasm_intrinsics.h"
 //#include "extensions/common/wasm/ext/envoy_proxy_wasm_api.h"
 
@@ -27,6 +30,11 @@ private:
 
 class ExampleContext : public Context {
 public:
+  /**
+   * This static function will be called by modsecurity and internally invoke logCb filter's method
+   */
+  static void logCb(void* data, const void* ruleMessagev);
+
   explicit ExampleContext(uint32_t id, RootContext* root) : Context(id, root) {}
 
   void onCreate() override;
@@ -52,6 +60,7 @@ public:
   std::shared_ptr<modsecurity::RulesSet> modsec_rules() const { return modsec_rules_; }
 
 private:
+
   // rules config data from root context configurations
   std::string rules_inline_;
 
@@ -111,6 +120,8 @@ void ExampleContext::onCreate() {
   LOG_INFO(std::string("onCreate load configurations: ") + rules_inline_);
   modsec_.reset(new modsecurity::ModSecurity());
   modsec_->setConnectorInformation("ModSecurity-envoy v3.0.4 (ModSecurity)");
+  modsec_->setServerLogCb(ExampleContext::logCb,
+                          modsecurity::RuleMessageLogProperty | modsecurity::IncludeFullHighlightLogProperty);
   modsec_rules_.reset(new modsecurity::RulesSet());
   if (!rules_inline().empty()) {
       int rulesLoaded = modsec_rules_->load(rules_inline().c_str());
@@ -358,4 +369,29 @@ FilterDataStatus ExampleContext::getResponseStatus() {
   }
   // If disruptive, hold until status_.response_processed, otherwise let the data flow.
   return modsec_transaction_->m_it.disruptive ? FilterDataStatus::StopIterationAndBuffer : FilterDataStatus::Continue;
+}
+
+void ExampleContext::logCb(void *data, const void *rulemessage) {
+    const modsecurity::RuleMessage* ruleMessage = reinterpret_cast<const modsecurity::RuleMessage*>(rulemessage);
+
+    if (ruleMessage == nullptr) {
+        LOG_INFO("ruleMessage == nullptr");
+        return;
+    }
+
+    LOG_INFO("Rule Id: " + std::to_string(ruleMessage->m_ruleId) + " Rule Phase: " + std::to_string(ruleMessage->m_phase));
+    /*
+    LOG_INFO("* {} action. {}",
+                    // Note - since ModSecurity >= v3.0.3 disruptive actions do not invoke the callback
+                    // see https://github.com/SpiderLabs/ModSecurity/commit/91daeee9f6a61b8eda07a3f77fc64bae7c6b7c36
+                    ruleMessage->m_isDisruptive ? "Disruptive" : "Non-disruptive",
+                    modsecurity::RuleMessage::log(ruleMessage));
+    */
+    std::ofstream outfile;
+    outfile.open("/etc/modsecurity_audit.log");
+    std::string filedata = "hello world";
+    outfile << filedata << std::endl;
+
+    std::string isDisruptive = ruleMessage->m_isDisruptive ? "Disruptive " : "Non-disruptive ";
+    LOG_INFO(isDisruptive + std::string(modsecurity::RuleMessage::log(ruleMessage)));
 }
