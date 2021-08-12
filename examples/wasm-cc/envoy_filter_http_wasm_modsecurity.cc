@@ -22,18 +22,34 @@ public:
   bool onConfigure(size_t /* configuration_size */) override;
   void onTick() override;
 
+  /**
+   * This static function will be called by modsecurity and internally invoke logCb filter's method
+   */
+  static void logCb(void* data, const void* ruleMessagev);
+
+  // get config
+  const std::string&   rules_inline() const { return rules_inline_; }
+
+  std::shared_ptr<modsecurity::ModSecurity> modsec() const { return modsec_; }
+  std::shared_ptr<modsecurity::RulesSet> modsec_rules() const { return modsec_rules_; }
+  std::shared_ptr<modsecurity::Transaction> modsec_transaction() const {return modsec_transaction_; }
+
   std::string configuration() { return configuration_; };
 
 private:
+  // rules config data from root context configurations
+  std::string rules_inline_;
+
+  // share modsecurity obj
+  std::shared_ptr<modsecurity::ModSecurity> modsec_;
+  std::shared_ptr<modsecurity::RulesSet> modsec_rules_;
+  std::shared_ptr<modsecurity::Transaction> modsec_transaction_;
+
   std::string configuration_;
 };
 
 class ExampleContext : public Context {
 public:
-  /**
-   * This static function will be called by modsecurity and internally invoke logCb filter's method
-   */
-  static void logCb(void* data, const void* ruleMessagev);
 
   explicit ExampleContext(uint32_t id, RootContext* root) : Context(id, root) {}
 
@@ -93,21 +109,63 @@ static RegisterContextFactory register_ExampleContext(CONTEXT_FACTORY(ExampleCon
                                                       ROOT_FACTORY(ExampleRootContext),
                                                       "my_root_id");
 
-void ExampleRootContext::onTick() { LOG_TRACE("onTick"); }
+void ExampleRootContext::onTick() {
+  LOG_INFO("onTick");
 
-bool ExampleRootContext::onStart(size_t vm_configuration_size) {
+  /* get rules from remote service*/
+  //(TODO)httpcall ???
+  rules_inline_ = rules_inline();
+
+  /* load updated rules */
+  modsec_.reset(new modsecurity::ModSecurity());
+  modsec_->setConnectorInformation("ModSecurity-envoy v3.0.4 (ModSecurity)");
+  modsec_->setServerLogCb(ExampleRootContext::logCb,
+                          modsecurity::RuleMessageLogProperty | modsecurity::IncludeFullHighlightLogProperty);
+  modsec_rules_.reset(new modsecurity::RulesSet());
+  if (!rules_inline().empty()) {
+      int rulesLoaded = modsec_rules_->load(rules_inline().c_str());
+      if (rulesLoaded == -1) {
+          LOG_ERROR(std::string("Failed to load rules"));
+      } else {
+          LOG_INFO(std::string("Loaded updated rules: ") + std::to_string(rulesLoaded));
+      };
+  }
+  modsec_transaction_.reset(new modsecurity::Transaction(modsec().get(), modsec_rules().get(), this));
+
+}
+
+bool ExampleRootContext::onStart(size_t /* vm_configuration_size */) {
   LOG_TRACE("onStart");
-  auto vm_configuration_data = getBufferBytes(WasmBufferType::VmConfiguration, 0, vm_configuration_size);
-  std::string vm_configuration = vm_configuration_data->toString();
-  LOG_INFO(std::string("vm configurations: ") + vm_configuration);
   return true;
 }
 
 bool ExampleRootContext::onConfigure(size_t configuration_size) {
   LOG_WARN("onConfigure");
-  proxy_set_tick_period_milliseconds(1000); // 1 sec
+  proxy_set_tick_period_milliseconds(10000); // 1 sec
+
+  /* get inline configurations */
   auto configuration_data = getBufferBytes(WasmBufferType::PluginConfiguration, 0, configuration_size);
   configuration_ = configuration_data->toString();
+  rules_inline_ = configuration_;
+  LOG_INFO(std::string("onConfigure load configurations: ") + rules_inline_);
+
+  /* modsecurity initializing */
+  modsec_.reset(new modsecurity::ModSecurity());
+  modsec_->setConnectorInformation("ModSecurity-envoy v3.0.4 (ModSecurity)");
+  modsec_->setServerLogCb(ExampleRootContext::logCb,
+                          modsecurity::RuleMessageLogProperty | modsecurity::IncludeFullHighlightLogProperty);
+
+  modsec_rules_.reset(new modsecurity::RulesSet());
+  if (!rules_inline().empty()) {
+      int rulesLoaded = modsec_rules_->load(rules_inline().c_str());
+      if (rulesLoaded == -1) {
+          LOG_ERROR(std::string("Failed to load rules"));
+      } else {
+          LOG_INFO(std::string("Loaded inline rules: ") + std::to_string(rulesLoaded));
+      };
+  }
+  modsec_transaction_.reset(new modsecurity::Transaction(modsec().get(), modsec_rules().get(), this));
+
   return true;
 }
 
@@ -117,22 +175,9 @@ void ExampleContext::onCreate() {
   // modsecurity initializing
   ExampleRootContext* root = dynamic_cast<ExampleRootContext*>(this->root());
   rules_inline_ = root->configuration();
-  LOG_INFO(std::string("onCreate load configurations: ") + rules_inline_);
-  modsec_.reset(new modsecurity::ModSecurity());
-  modsec_->setConnectorInformation("ModSecurity-envoy v3.0.4 (ModSecurity)");
-  modsec_->setServerLogCb(ExampleContext::logCb,
-                          modsecurity::RuleMessageLogProperty | modsecurity::IncludeFullHighlightLogProperty);
-  modsec_rules_.reset(new modsecurity::RulesSet());
-  if (!rules_inline().empty()) {
-      int rulesLoaded = modsec_rules_->load(rules_inline().c_str());
-      LOG_INFO("Loading ModSecurity inline rules");
-      if (rulesLoaded == -1) {
-          LOG_ERROR(std::string("Failed to load rules"));
-      } else {
-          LOG_INFO(std::string("Loaded inline rules: ") + std::to_string(rulesLoaded));
-      };
-  }
-  modsec_transaction_.reset(new modsecurity::Transaction(modsec().get(), modsec_rules().get(), this));
+  modsec_ = root->modsec();
+  modsec_rules_ = root->modsec_rules();
+  modsec_transaction_ = root->modsec_transaction();
 }
 
 FilterHeadersStatus ExampleContext::onRequestHeaders(uint32_t /* headers */, bool end_of_stream) {
@@ -371,7 +416,7 @@ FilterDataStatus ExampleContext::getResponseStatus() {
   return modsec_transaction_->m_it.disruptive ? FilterDataStatus::StopIterationAndBuffer : FilterDataStatus::Continue;
 }
 
-void ExampleContext::logCb(void *data, const void *rulemessage) {
+void ExampleRootContext::logCb(void *data, const void *rulemessage) {
     const modsecurity::RuleMessage* ruleMessage = reinterpret_cast<const modsecurity::RuleMessage*>(rulemessage);
 
     if (ruleMessage == nullptr) {
