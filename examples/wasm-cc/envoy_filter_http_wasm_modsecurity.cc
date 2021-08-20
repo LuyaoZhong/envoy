@@ -32,7 +32,6 @@ public:
 
   std::shared_ptr<modsecurity::ModSecurity> modsec() const { return modsec_; }
   std::shared_ptr<modsecurity::RulesSet> modsec_rules() const { return modsec_rules_; }
-  std::shared_ptr<modsecurity::Transaction> modsec_transaction() const {return modsec_transaction_; }
 
   std::string configuration() { return configuration_; };
 
@@ -43,7 +42,6 @@ private:
   // share modsecurity obj
   std::shared_ptr<modsecurity::ModSecurity> modsec_;
   std::shared_ptr<modsecurity::RulesSet> modsec_rules_;
-  std::shared_ptr<modsecurity::Transaction> modsec_transaction_;
 
   std::string configuration_;
 };
@@ -69,20 +67,12 @@ public:
   void onLog() override;
   void onDelete() override;
 
-  // get config
-  const std::string& rules_inline() const { return rules_inline_; }
-
-  std::shared_ptr<modsecurity::ModSecurity> modsec() const { return modsec_; }
-  std::shared_ptr<modsecurity::RulesSet> modsec_rules() const { return modsec_rules_; }
-
 private:
 
   // rules config data from root context configurations
   std::string rules_inline_;
 
   // share modsecurity obj
-  std::shared_ptr<modsecurity::ModSecurity> modsec_;
-  std::shared_ptr<modsecurity::RulesSet> modsec_rules_;
   std::shared_ptr<modsecurity::Transaction> modsec_transaction_;
 
   FilterHeadersStatus getRequestHeadersStatus();
@@ -130,8 +120,6 @@ void ExampleRootContext::onTick() {
           LOG_INFO(std::string("Loaded updated rules: ") + std::to_string(rulesLoaded));
       };
   }
-  modsec_transaction_.reset(new modsecurity::Transaction(modsec().get(), modsec_rules().get(), this));
-
 }
 
 bool ExampleRootContext::onStart(size_t /* vm_configuration_size */) {
@@ -164,7 +152,6 @@ bool ExampleRootContext::onConfigure(size_t configuration_size) {
           LOG_INFO(std::string("Loaded inline rules: ") + std::to_string(rulesLoaded));
       };
   }
-  modsec_transaction_.reset(new modsecurity::Transaction(modsec().get(), modsec_rules().get(), this));
 
   return true;
 }
@@ -174,10 +161,7 @@ void ExampleContext::onCreate() {
 
   // modsecurity initializing
   ExampleRootContext* root = dynamic_cast<ExampleRootContext*>(this->root());
-  rules_inline_ = root->configuration();
-  modsec_ = root->modsec();
-  modsec_rules_ = root->modsec_rules();
-  modsec_transaction_ = root->modsec_transaction();
+  modsec_transaction_.reset(new modsecurity::Transaction(root->modsec().get(), root->modsec_rules().get(), this));
 }
 
 FilterHeadersStatus ExampleContext::onRequestHeaders(uint32_t /* headers */, bool end_of_stream) {
