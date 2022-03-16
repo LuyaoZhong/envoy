@@ -1246,7 +1246,7 @@ envoy.matching.custom_matchers.trie_matcher:
   status: alpha
   type_urls:
   - xds.type.matcher.v3.IPMatcher
-envoy.cert_providers.static_cert_provider:
+envoy.cert_providers.default_cert_provider:
   categories:
   - envoy.cert_providers
   security_posture: unknown
