@@ -26,11 +26,13 @@ namespace Upstreams {
 namespace Http {
 namespace Http {
 
+// NOTE(luyao): UpstreamRequest::encodeHeaders会根据conn pool调用newStream
 void HttpConnPool::newStream(GenericConnectionPoolCallbacks* callbacks) {
   callbacks_ = callbacks;
   // It's possible for a reset to happen inline within the newStream() call. In this case, we
   // might get deleted inline as well. Only write the returned handle out if it is not nullptr to
   // deal with this case.
+  // NOTE(luyao): HttpPoolData::newStream in envoy/upstream/thread_local_cluster.h
   Envoy::Http::ConnectionPool::Cancellable* handle =
       pool_data_.value().newStream(callbacks->upstreamToDownstream(), *this,
                                    callbacks->upstreamToDownstream().upstreamStreamOptions());
@@ -52,6 +54,7 @@ void HttpConnPool::onPoolFailure(ConnectionPool::PoolFailureReason reason,
                                  absl::string_view transport_failure_reason,
                                  Upstream::HostDescriptionConstSharedPtr host) {
   conn_pool_stream_handle_ = nullptr;
+  // 调用UpstreamRequest的onPoolFailure
   callbacks_->onPoolFailure(reason, transport_failure_reason, host);
 }
 
@@ -62,6 +65,9 @@ void HttpConnPool::onPoolReady(Envoy::Http::RequestEncoder& request_encoder,
   conn_pool_stream_handle_ = nullptr;
   auto upstream =
       std::make_unique<HttpUpstream>(callbacks_->upstreamToDownstream(), &request_encoder);
+  // 构造HttpUpstream，将request_encoder 一起传回到UpstreamRequest并调用onPoolReady
+  // UpstreamRequest::onPoolReady in source/common/router/upstream_request.cc
+  // 最后通过upstream->encodeHeaders 把header传给 upstream
   callbacks_->onPoolReady(std::move(upstream), host,
                           request_encoder.getStream().connectionLocalAddress(), info, protocol);
 }

@@ -39,6 +39,8 @@ enum class ParserStatus {
   Unknown,
 };
 
+// 这是http1 的parser callbacks, http1 的 ConnectionImpl需要实现这些接口，提供给http_parser进行回调
+// 接口实现 in source/common/http/http1/codec_impl.cc
 class ParserCallbacks {
 public:
   virtual ~ParserCallbacks() = default;

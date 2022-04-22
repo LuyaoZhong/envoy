@@ -38,6 +38,8 @@ allocateConnPool(Event::Dispatcher& dispatcher, Random::RandomGenerator& random_
                                                  pool->randomGenerator())};
         return codec;
       },
+      // NOTE(luyao): CodecClientProd对象创建的同时，会在client socker上执行 connect操作
+      // CodecClientProd::CodecClientProd in source/common/http/codec_client.cc
       std::vector<Protocol>{Protocol::Http2});
 }
 

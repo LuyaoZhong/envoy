@@ -145,6 +145,8 @@ Network::SocketSharedPtr ListenSocketFactoryImpl::createListenSocketAndApplyOpti
   // Socket might be nullptr when doing server validation.
   // TODO(mattklein123): See the comment in the validation code. Make that code not return nullptr
   // so this code can be simpler.
+  // NOTE(luyao): 创建listen socket，只做bind，不做listen
+  // ProdListenerComponentFactory::createListenSocket in source/server/listener_manager_impl.cc
   Network::SocketSharedPtr socket = factory.createListenSocket(
       local_address_, socket_type, options_, bind_type_, socket_creation_options_, worker_index);
 
@@ -177,6 +179,7 @@ Network::SocketSharedPtr ListenSocketFactoryImpl::getListenSocket(uint32_t worke
   return sockets_[worker_index];
 }
 
+// NOTE(luyao): 在所有的socket上执行listen()
 void ListenSocketFactoryImpl::doFinalPreWorkerInit() {
   if (bind_type_ == ListenerComponentFactory::BindType::NoBind ||
       socket_type_ != Network::Socket::Type::Stream) {
@@ -810,10 +813,12 @@ Init::Manager& PerListenerFactoryContextImpl::initManager() { return listener_im
 bool ListenerImpl::createNetworkFilterChain(
     Network::Connection& connection,
     const std::vector<Network::FilterFactoryCb>& filter_factories) {
+  // NOTE(luyao): FilterChainUtility::buildFilterChain source/server/configuration_impl.cc
   return Configuration::FilterChainUtility::buildFilterChain(connection, filter_factories);
 }
-
+// 两个相同的方法名字，但是参数不同
 bool ListenerImpl::createListenerFilterChain(Network::ListenerFilterManager& manager) {
+  // NOTE(luyao): FilterChainUtility::buildFilterChain source/server/configuration_impl.cc
   return Configuration::FilterChainUtility::buildFilterChain(manager, listener_filter_factories_);
 }
 

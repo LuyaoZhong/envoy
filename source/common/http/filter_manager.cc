@@ -540,6 +540,12 @@ void FilterManager::decodeHeaders(ActiveStreamDecoderFilter* filter, RequestHead
     ASSERT(!(state_.filter_call_state_ & FilterCallState::DecodeHeaders));
     state_.filter_call_state_ |= FilterCallState::DecodeHeaders;
     (*entry)->end_stream_ = (end_stream && continue_data_entry == decoder_filters_.end());
+    // HCM的最后一个HTTP filter一定是http.router
+    // 创建Router Filter是由 http filter的工厂函数实现的，
+    // Http::FilterFactoryCb RouterFilterConfig::createFilterFactoryFromProtoTyped in source/extensions/filters/http/router/config.cc
+    // class Filter in source/common/router/router.h
+    // Router::Filter::decodeHeaders in source/common/router/router.cc
+    // router为每一个downstream请求创建一个UpstreamRequest对象
     FilterHeadersStatus status = (*entry)->decodeHeaders(headers, (*entry)->end_stream_);
     if (state_.decoder_filter_chain_aborted_) {
       ENVOY_STREAM_LOG(trace,

@@ -55,6 +55,7 @@ void CodecClient::connect() {
     connected_ = true;
   } else {
     ENVOY_CONN_LOG(debug, "connecting", *connection_);
+    // NOTE(luyao): ClientConnectionImpl::connect() in source/common/network/connection_impl.cc
     connection_->connect();
   }
 }

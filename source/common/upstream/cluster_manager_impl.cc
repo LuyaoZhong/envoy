@@ -949,11 +949,20 @@ void ClusterManagerImpl::maybePreconnect(
   }
 }
 
+// NOTE(luyao):
+// tcp_proxy 的 HttpConnPool::HttpConnPool构造时候调用了该方法in source/common/tcp_proxy/upstream.cc
+// http 的 HttpConnPool::HttpConnPool 构造时候调用了该方法 in source/extensions/upstreams/http/http/upstream_request.h
 absl::optional<HttpPoolData>
 ClusterManagerImpl::ThreadLocalClusterManagerImpl::ClusterEntry::httpConnPool(
     ResourcePriority priority, absl::optional<Http::Protocol> protocol,
     LoadBalancerContext* context) {
   // Select a host and create a connection pool for it if it does not already exist.
+
+  // httpConnPoolImpl 返回一个 HttpConnPoolImplBase对象 in source/common/http/conn_pool_base.h
+  // 具体实现可能是 FixedHttpConnPoolImpl in source/common/http/conn_pool_base.h
+                  // http1 和 http2 分别通过 FixedHttpConnPoolImpl实现
+  //         或者 HttpConnPoolImplMixed in source/common/http/mixed_conn_pool.h
+                  // 同时支持http1 和http2的conn pool
   auto pool = httpConnPoolImpl(priority, protocol, context, false);
   if (pool == nullptr) {
     return absl::nullopt;
@@ -971,10 +980,17 @@ ClusterManagerImpl::ThreadLocalClusterManagerImpl::ClusterEntry::httpConnPool(
   return data;
 }
 
+// NOTE(luyao):
+// tcp proxy 的 TcpConnPool::TcpConnPool构造时候调用了该方法 in source/common/tcp_proxy/upstream.cc
+// http 的 TcpConnPool::TcpConnPool 构造时候调用了该方法 in source/extensions/upstreams/http/tcp/upstream_request.h
 absl::optional<TcpPoolData>
 ClusterManagerImpl::ThreadLocalClusterManagerImpl::ClusterEntry::tcpConnPool(
     ResourcePriority priority, LoadBalancerContext* context) {
   // Select a host and create a connection pool for it if it does not already exist.
+
+  // tcpConnPoolImpl返回一个Tcp::ConnPoolImpl or Tcp::OriginalConnPoolImpl
+  // Tcp::ConnPoolImpl in source/common/tcp/conn_pool.h
+  // Tcp::OriginalConnPoolImpl in source/common/tcp/original_conn_pool.cc
   auto pool = tcpConnPoolImpl(priority, context, false);
   if (pool == nullptr) {
     return absl::nullopt;
@@ -986,7 +1002,7 @@ ClusterManagerImpl::ThreadLocalClusterManagerImpl::ClusterEntry::tcpConnPool(
           return tcpConnPoolImpl(priority, context, true);
         });
       },
-      pool);
+      pool); // data的pool_是一个Tcp::ConnPoolImpl或者Tcp::OriginalConnPoolImpl
   return data;
 }
 
@@ -1776,6 +1792,7 @@ ClusterManagerImpl::ThreadLocalClusterManagerImpl::ClusterEntry::tcpConnPoolImpl
     bool inserted;
     std::tie(pool_iter, inserted) = container.pools_.emplace(
         hash_key,
+        // NOTE(luyao): allocate a Tcp::ConnPoolImpl or Tcp::OriginalConnPoolImpl
         parent_.parent_.factory_.allocateTcpConnPool(
             parent_.thread_local_dispatcher_, host, priority,
             !upstream_options->empty() ? upstream_options : nullptr,
@@ -1894,9 +1911,11 @@ Tcp::ConnectionPool::InstancePtr ProdClusterManagerFactory::allocateTcpConnPool(
     ClusterConnectivityState& state) {
   ENVOY_LOG_MISC(debug, "Allocating TCP conn pool");
   if (Runtime::runtimeFeatureEnabled("envoy.reloadable_features.new_tcp_connection_pool")) {
+    // NOTE(luyao): Tcp::ConnPoolImpl in source/common/tcp/conn_pool.h
     return std::make_unique<Tcp::ConnPoolImpl>(dispatcher, host, priority, options,
                                                transport_socket_options, state);
   } else {
+    // Tcp::OriginalConnPoolImpl in source/common/tcp/original_conn_pool.cc
     return Tcp::ConnectionPool::InstancePtr{new Tcp::OriginalConnPoolImpl(
         dispatcher, host, priority, options, transport_socket_options)};
   }

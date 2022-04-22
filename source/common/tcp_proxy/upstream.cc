@@ -151,6 +151,11 @@ TcpConnPool::TcpConnPool(Upstream::ThreadLocalCluster& thread_local_cluster,
                          Upstream::LoadBalancerContext* context,
                          Tcp::ConnectionPool::UpstreamCallbacks& upstream_callbacks)
     : upstream_callbacks_(upstream_callbacks) {
+  // NOTE(luyao): ClusterManagerImpl::ThreadLocalClusterManagerImpl::ClusterEntry::tcpConnPool
+  //               in source/common/upstream/cluster_manager_impl.cc
+  // conn_pool_data_的newConnection实现，是pool_.newConnection 即可能是以下两种类对应方法的实现
+  // Tcp::ConnPoolImpl in source/common/tcp/conn_pool.h
+  // Tcp::OriginalConnPoolImpl in source/common/tcp/original_conn_pool.cc
   conn_pool_data_ = thread_local_cluster.tcpConnPool(Upstream::ResourcePriority::Default, context);
 }
 
@@ -166,6 +171,9 @@ void TcpConnPool::newStream(GenericConnectionPoolCallbacks& callbacks) {
   // valid connection handle. If newConnection fails inline it may result in attempting to
   // select a new host, and a recursive call to initializeUpstreamConnection. In this case the
   // first call to newConnection will return null and the inner call will persist.
+  // NOTE(luyao): 对应的具体函数实现如下
+  // Tcp::ConnPoolImpl::newConnection in source/common/tcp/conn_pool.h
+  // Tcp::OriginalConnPoolImpl::newConnection in source/common/tcp/original_conn_pool.cc
   Tcp::ConnectionPool::Cancellable* handle = conn_pool_data_.value().newConnection(*this);
   if (handle) {
     ASSERT(upstream_handle_ == nullptr);
@@ -205,6 +213,11 @@ HttpConnPool::HttpConnPool(Upstream::ThreadLocalCluster& thread_local_cluster,
   } else if (type_ == Http::CodecType::HTTP2) {
     protocol = Http::Protocol::Http2;
   }
+  // NOTE(luyao): ClusterManagerImpl::ThreadLocalClusterManagerImpl::ClusterEntry::httpConnPool
+  //               in source/common/upstream/cluster_manager_impl.cc
+  // conn_pool_data_的newConnection实现，是pool_.newConnection 即可能是以下两种类对应方法的实现
+  // Tcp::ConnPoolImpl in source/common/tcp/conn_pool.h
+  // Tcp::OriginalConnPoolImpl in source/common/tcp/original_conn_pool.cc
   conn_pool_data_ =
       thread_local_cluster.httpConnPool(Upstream::ResourcePriority::Default, protocol, context);
 }

@@ -85,7 +85,7 @@ void TcpListenerImpl::onSocketEvent(short flags) {
             : Address::addressFromSockAddrOrThrow(remote_addr, remote_addr_len,
                                                   local_address->ip()->version() ==
                                                       Address::IpVersion::v6);
-
+    // NOTE(luyao): cb_ is ActiveTcpListener in source/server/active_tcp_listener.cc
     cb_.onAccept(
         std::make_unique<AcceptedSocketImpl>(std::move(io_handle), local_address, remote_address));
   }

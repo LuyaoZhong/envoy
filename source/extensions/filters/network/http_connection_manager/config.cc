@@ -691,6 +691,10 @@ Http::ServerConnectionPtr
 HttpConnectionManagerConfig::createCodec(Network::Connection& connection,
                                          const Buffer::Instance& data,
                                          Http::ServerConnectionCallbacks& callbacks) {
+  // Http::ConnectionManagerImpl 接收到下游请求，通过配置对象创建一个 Http::ServerConnection 对象作为 codec
+  // 根据不同的codec_type创建不同的Http::ServerConnection对象
+  // class ServerConnectionImpl in source/common/http/http1/codec_impl.h
+  // class ServerConnectionImpl in source/common/http/http2/codec_impl.h
   switch (codec_type_) {
   case CodecType::HTTP1: {
     return std::make_unique<Http::Http1::ServerConnectionImpl>(

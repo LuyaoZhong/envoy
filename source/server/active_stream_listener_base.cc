@@ -24,6 +24,11 @@ void ActiveStreamListenerBase::emitLogs(Network::ListenerConfig& config,
   }
 }
 
+// NOTE(luyao) 这个函数的调用栈
+// TcpListenerImpl::onSocketEvent in source/common/network/tcp_listener_impl.cc --> cb_.onAccept
+// ActiveTcpListener::onAccept in source/server/active_tcp_listener.cc --> onAcceptWorker -> onSocketAccepted
+// ActiveStreamListenerBase::onSocketAccepted in source/server/active_stream_listener_base.h --> active_socket->continueFilterChain
+// ActiveTcpSocket::continueFilterChain in source/server/active_tcp_socket.cc ---> newConnection(this function)
 void ActiveStreamListenerBase::newConnection(Network::ConnectionSocketPtr&& socket,
                                              std::unique_ptr<StreamInfo::StreamInfo> stream_info) {
   // Find matching filter chain.
@@ -50,6 +55,8 @@ void ActiveStreamListenerBase::newConnection(Network::ConnectionSocketPtr&& sock
   }
   server_conn_ptr->setBufferLimits(config_->perConnectionBufferLimitBytes());
   RELEASE_ASSERT(server_conn_ptr->connectionInfoProvider().remoteAddress() != nullptr, "");
+  // NOTE(luyao):
+  // FilterChainUtility::buildFilterChain in source/server/configuration_impl.cc
   const bool empty_filter_chain = !config_->filterChainFactory().createNetworkFilterChain(
       *server_conn_ptr, filter_chain->networkFilterFactories());
   if (empty_filter_chain) {
@@ -57,6 +64,9 @@ void ActiveStreamListenerBase::newConnection(Network::ConnectionSocketPtr&& sock
                    server_conn_ptr->connectionInfoProvider().remoteAddress()->asString());
     server_conn_ptr->close(Network::ConnectionCloseType::NoFlush);
   }
+  // NOTE(luyao): 目前有两个实现
+  // ActiveTcpListener::newActiveConnection in source/server/active_tcp_listener.cc
+  // ActiveInternalListener::newActiveConnection in source/server/active_internal_listener.cc
   newActiveConnection(*filter_chain, std::move(server_conn_ptr), std::move(stream_info));
 }
 

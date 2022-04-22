@@ -483,6 +483,9 @@ ConnectionImpl::ConnectionImpl(Network::Connection& connection, CodecStats& stat
           []() -> void { /* TODO(adisuissa): Handle overflow watermark */ })),
       max_headers_kb_(max_headers_kb), max_headers_count_(max_headers_count) {
   output_buffer_->setWatermarks(connection.bufferLimit());
+  // 创建一个parser，用来调用nodejs的http_parser组件， 对数据流进行解析
+  // "this" 是当前ConnectionImpl实例，继承ParserCallbacks
+  // class ParserCallbacks in source/common/http/http1/parser.h
   parser_ = std::make_unique<LegacyHttpParserImpl>(type, this);
 }
 
@@ -591,6 +594,21 @@ Http::Status ConnectionImpl::dispatch(Buffer::Instance& data) {
   }
 
   // Always resume before dispatch.
+  // NOTE(luyao): 恢复parser_, resume()实现 in source/common/http/http1/legacy_parser_impl.cc
+  // parser_的初始化包含在ConnectionImpl::ConnectionImpl构造函数中
+  // 数据被dispatch到parser，parser在解析数据后，在不同阶段调用ConnectionImpl实现的callbacks
+  // struct http_parser_settings {
+  //   http_cb      on_message_begin;
+  //   http_data_cb on_url;
+  //   http_data_cb on_status;
+  //   http_data_cb on_header_field;
+  //   http_data_cb on_header_value;
+  //   http_cb      on_headers_complete;
+  //   http_data_cb on_body;
+  //   http_cb      on_message_complete;
+  //   http_cb      on_chunk_header;
+  //   http_cb      on_chunk_complete;
+  // };
   parser_->resume();
 
   ssize_t total_parsed = 0;
@@ -861,6 +879,8 @@ StatusOr<ParserStatus> ConnectionImpl::onMessageComplete() {
   return onMessageCompleteBase();
 }
 
+// NOTE(luyao): 一个request或者response开始的时候会调用该函数
+// 这个过程会创建 Http::Http1::ServerConnectionImpl::ActiveRequest 对象来封装本次请求，见onMessageBeginBase
 Status ConnectionImpl::onMessageBegin() {
   ENVOY_CONN_LOG(trace, "message begin", connection_);
   // Make sure that if HTTP/1.0 and HTTP/1.1 requests share a connection Envoy correctly sets
@@ -1044,6 +1064,8 @@ Status ServerConnectionImpl::handlePath(RequestHeaderMap& headers, absl::string_
   return okStatus();
 }
 
+// NOTE(luyao)： parser完成header的解析之后，调用此callback function
+// 在此函数执行过程中，完成与upstream的connection建立，通过#L1120 active_request_->request_decoder_->decodeHeaders(std::move(headers), false)
 Envoy::StatusOr<ParserStatus> ServerConnectionImpl::onHeadersCompleteBase() {
   // Handle the case where response happens prior to request complete. It's up to upper layer code
   // to disconnect the connection but we shouldn't fire any more events since it doesn't make
@@ -1095,6 +1117,12 @@ Envoy::StatusOr<ParserStatus> ServerConnectionImpl::onHeadersCompleteBase() {
     if (parser_->isChunked() ||
         (parser_->contentLength().has_value() && parser_->contentLength().value() > 0) ||
         handling_upgrade_) {
+      // NOTE(luyao): active request是对downstream请求的封装,在parser完成header的解析后会调用该函数执行此行
+      // 此时会调用active request的request_decoder执行decodeData
+      // ActiveStream::decodeData in source/common/http/conn_manager_impl.cc
+      // 在此过程中调用Envoy::Http::FilterManager的decodeData,这最终会调用到Http的最后一个filter, 即router filter的decodeHeaders
+      // class FilterManager in source/common/http/filter_manager.h
+      // FilterManager::decodeHeaders in source/common/http/filter_manager.cc
       active_request_->request_decoder_->decodeHeaders(std::move(headers), false);
 
       // If the connection has been closed (or is closing) after decoding headers, pause the parser
@@ -1113,10 +1141,22 @@ Envoy::StatusOr<ParserStatus> ServerConnectionImpl::onHeadersCompleteBase() {
 Status ServerConnectionImpl::onMessageBeginBase() {
   if (!resetStreamCalled()) {
     ASSERT(active_request_ == nullptr);
+    // NOTE(luyao): 创建一个ActiveRequest封装本次请求，定义见头文件 codec_impl.h
+    // 创建ActiveRequest会初始化一个response_encoder_, 是server side connection用来处理给downstream的返回数据
     active_request_ = std::make_unique<ActiveRequest>(*this, std::move(bytes_meter_before_stream_));
     if (resetStreamCalled()) {
       return codecClientError("cannot create new streams after calling reset");
     }
+    // NOTE(luyao): 创建ActiveRequest的request_decoder, 是server side connection用来处理给upstream的请求数据
+
+    // callbacks_ 是 ServerConnectionCallbacks，HCM继承了该类，并实现了相应的接口 newStream
+    // HCM创建server connection时把自己作为ServerConnectionCallbacks的实例传递给ServerConnectionImpl
+    // class ServerConnectionCallbacks in envoy/http/codec.h
+    // Http::ConnectionManagerImpl::newStream in source/common/http/conn_manager_impl.cc
+
+    // newStream创建一个ActiveStream对象加入streams列表并返回streams里的第一个，ActiveStream继承了类RequestDecoder，因此ActiveStream实现了decodeXXX等方法
+    // struct ActiveStream in source/common/http/conn_manager_impl.h
+    // ActiveStream::decodeXXX in source/common/http/conn_manager_impl.cc
     active_request_->request_decoder_ = &callbacks_.newStream(active_request_->response_encoder_);
 
     // Check for pipelined request flood as we prepare to accept a new request.
@@ -1154,7 +1194,7 @@ Http::Status ServerConnectionImpl::dispatch(Buffer::Instance& data) {
     active_request_->response_encoder_.readDisable(true);
     return okStatus();
   }
-
+  // NOTE(luyao): 调用父类的dispatch方法，也在本文件中定义
   Http::Status status = ConnectionImpl::dispatch(data);
 
   if (runtime_lazy_read_disable_ && active_request_ != nullptr &&

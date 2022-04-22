@@ -56,11 +56,16 @@ HttpConnPoolImplBase::HttpConnPoolImplBase(
 
 HttpConnPoolImplBase::~HttpConnPoolImplBase() { destructAllConnections(); }
 
+// NOTE(luyao): Tcp和Http都走到newStreamImpl
 ConnectionPool::Cancellable*
 HttpConnPoolImplBase::newStream(Http::ResponseDecoder& response_decoder,
                                 Http::ConnectionPool::Callbacks& callbacks,
                                 const Instance::StreamOptions& options) {
+  // response_decoder是UpstreamRequest, 对upstream返回的数据做decode
+  // callbacks是HttpConnPool 的 onPoolReady和onPoolFailure，其实就是对应调用UpstreamRequest的onPoolReady和onPoolFailure
+  // onPoolReady是在upstream ready之后，向upstream发送数据，onPoolReady中将调用encode操作
   HttpAttachContext context({&response_decoder, &callbacks});
+  // ConnPoolImplBase::newStreamImpl in source/common/conn_pool/conn_pool_base.cc
   return newStreamImpl(context, options.can_send_early_data_);
 }
 
@@ -85,7 +90,11 @@ void HttpConnPoolImplBase::onPoolReady(Envoy::ConnectionPool::ActiveClient& clie
   auto& http_context = typedContext<HttpAttachContext>(context);
   Http::ResponseDecoder& response_decoder = *http_context.decoder_;
   Http::ConnectionPool::Callbacks& callbacks = *http_context.callbacks_;
+  // 创建RequestEncoder
   Http::RequestEncoder& new_encoder = http_client->newStreamEncoder(response_decoder);
+  // 构造一个Upstram对象，封装了RequestEncoder，然后传回给UpstreamRequest的onPoolReady
+  // 最后通过UpstreamRequest的onPoolReady来调用Upstream对象的encode方法，把数据发送到上游
+  // HttpConnPool::onPoolReady in source/extensions/upstreams/http/http/upstream_request.cc
   callbacks.onPoolReady(new_encoder, client.real_host_description_,
                         http_client->codec_client_->streamInfo(),
                         http_client->codec_client_->protocol());

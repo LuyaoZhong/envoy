@@ -143,6 +143,15 @@ ConnPoolImplBase::tryCreateNewConnection(float global_preconnect_ratio) {
   if (can_create_connection ||
       (ready_clients_.empty() && busy_clients_.empty() && connecting_clients_.empty())) {
     ENVOY_LOG(debug, "creating a new connection");
+    // NOTE(luyao): 创建到upstream的连接，tcp 和 http有各自的实现
+    // 如果是TCP会创建一个ActiveTcpClient实例， source/common/tcp/conn_pool.h，构造函数ActiveTcpClient::ActiveTcpClient会创建到host的连接
+    // 如果是HTTP，HttpConnPoolImplMixed::instantiateActiveClient 会创建一个ActiveTcpClient实例
+    // FixedHttpConnPoolImpl接受一个函数参数实现初始化 class FixedHttpConnPoolImpl in source/common/http/conn_pool_base.h
+    // http1: allocateConnPool and Http1::ActiveClient in source/common/http/http1/conn_pool.cc
+    // http2: allocateConnPool and Http2::ActiveClient in source/common/http/http2/conn_pool.cc
+    // 这两个最终都是初始化一个Envoy::Http::ActiveClient in source/common/http/conn_pool_base.h 构造函数支持两种不同的参数列表
+    // 一种参数列表不包含Upstream::Host::CreateConnectionData，所以需要创建连接并初始化
+    // 另一种参数列表包含Upstream::Host::CreateConnectionData，表示连接已经建立，需要基于已经创建好的连接做初始化即可
     ActiveClientPtr client = instantiateActiveClient();
     if (client.get() == nullptr) {
       ENVOY_LOG(trace, "connection creation failed");
@@ -201,7 +210,9 @@ void ConnPoolImplBase::attachStreamToClient(Envoy::ConnectionPool::ActiveClient&
   host_->cluster().stats().upstream_rq_total_.inc();
   host_->cluster().stats().upstream_rq_active_.inc();
   host_->cluster().resourceManager(priority_).requests().inc();
-
+  // ConnPoolImplBase没有实现onPoolReady， 参考具体的conn pool的subclass实现
+  // Tcp::ConnPoolImpl::onPoolReady in source/common/tcp/conn_pool.h
+  // Http::HttpConnPoolImplBase::onPoolReady in source/common/http/conn_pool_base.cc
   onPoolReady(client, context);
 }
 
@@ -240,6 +251,8 @@ void ConnPoolImplBase::onStreamClosed(Envoy::ConnectionPool::ActiveClient& clien
   }
 }
 
+// NOTE(luyao): UpstreamRequest::encodeHeaders的调用栈最后会到这里
+// context.callbacks_ 是 TcpConnPool 或者 HttpConnPool
 ConnectionPool::Cancellable* ConnPoolImplBase::newStreamImpl(AttachContext& context,
                                                              bool can_send_early_data) {
   ASSERT(!is_draining_for_deletion_);
@@ -422,6 +435,12 @@ void ConnPoolImplBase::checkForIdleAndCloseIdleConnsIfDraining() {
   checkForIdleAndNotify();
 }
 
+// NOTE(luyao)
+// SslHandshakerImpl::doHandshake --> SslSocket::onSuccess ---> callbacks_->raiseEvent --->
+// ConnectionImpl::raiseEvent ---> ConnectionImplBase::raiseConnectionEvent ---> callback->onEvent --->
+//   - Tcp::ActiveTcpClient::onEvent ---> parent_.onConnectionEvent
+//   - Http::ActiveClient::onEvent ---> parent_.onConnectionEvent
+// ConnPoolImplBase::onConnectionEvent ---> onConnected & onUpstreamReady
 void ConnPoolImplBase::onConnectionEvent(ActiveClient& client, absl::string_view failure_reason,
                                          Network::ConnectionEvent event) {
   switch (event) {
@@ -533,9 +552,10 @@ void ConnPoolImplBase::onConnectionEvent(ActiveClient& client, absl::string_view
 
     // At this point, for the mixed ALPN pool, the client may be deleted. Do not
     // refer to client after this point.
+    // NOTE(luyao): 目前只有HttpConnPoolImplMixed::onConnected有具体实现，是将tcp client转成http client
     onConnected(client);
     if (streams_available) {
-      onUpstreamReady();
+      onUpstreamReady(); // 这个地方会调用attachStreamToClient，执行onPoolReady，向upstream发送数据
     }
     checkForIdleAndCloseIdleConnsIfDraining();
     break;

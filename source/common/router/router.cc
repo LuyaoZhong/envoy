@@ -372,6 +372,8 @@ void Filter::chargeUpstreamCode(Http::Code code,
   chargeUpstreamCode(response_status_code, *fake_response_headers, upstream_host, dropped);
 }
 
+// NOTE(luyao): http router 的 decodeHeaders, router为每一个downstream请求创建一个UpstreamRequest对象
+// 在该函数的最后，调用upstream_requests_.front()->encodeHeaders(end_stream); 将数据发送给upstream
 Http::FilterHeadersStatus Filter::decodeHeaders(Http::RequestHeaderMap& headers, bool end_stream) {
   downstream_headers_ = &headers;
 
@@ -679,7 +681,11 @@ Http::FilterHeadersStatus Filter::decodeHeaders(Http::RequestHeaderMap& headers,
       Runtime::runtimeFeatureEnabled(Runtime::conn_pool_new_stream_with_early_data_and_http3);
   const bool can_send_early_data = conn_pool_new_stream_with_early_data_and_http3_ &&
                                    Http::Utility::isSafeRequest(*downstream_headers_);
-
+  // NOTE(luyao): 创建UpstreamRequest对象，Upstream继承Http::StreamDecoder，实现了相应的方法处理upstream返回的数据
+  // class UpstreamRequest in source/common/router/upstream_request.h
+  // UpstreamRequest继承了Http::ResponseDecoder/StreamDecoder，用来接收upstream返回数据的时候进行decode
+  // UpstreamRequest实现encodeXXX等方法，用来发送数据给upstream的进行encode
+  // encodeHeaders会建立到upstream的连接，UpstreamRequest::encodeHeaders in source/common/router/upstream_request.cc
   UpstreamRequestPtr upstream_request =
       std::make_unique<UpstreamRequest>(*this, std::move(generic_conn_pool), can_send_early_data,
                                         /*can_use_http3=*/true);
@@ -695,6 +701,18 @@ Http::FilterHeadersStatus Filter::decodeHeaders(Http::RequestHeaderMap& headers,
 std::unique_ptr<GenericConnPool>
 Filter::createConnPool(Upstream::ThreadLocalCluster& thread_local_cluster) {
   GenericConnPoolFactory* factory = nullptr;
+  // NOTE(luyao): GenericConnPoolFactory 分为几种，这决定了最后生成的ConnPool是什么
+  // REGISTER_FACTORY(GenericGenericConnPoolFactory, Router::GenericConnPoolFactory); in source/extensions/upstreams/http/generic/config.cc
+  // REGISTER_FACTORY(HttpGenericConnPoolFactory, Router::GenericConnPoolFactory); in source/extensions/upstreams/http/http/config.cc
+  // REGISTER_FACTORY(TcpGenericConnPoolFactory, Router::GenericConnPoolFactory); in source/extensions/upstreams/http/tcp/config.cc
+  // 以上三个是http的generic/http/tcp conn pool factory
+  // generic 可以创建 Upstreams::Http::Tcp::TcpConnPool 和 Upstreams::Http::Http::HttpConnPool
+  // http 可以创建 Upstreams::Http::Http::HttpConnPool
+  // tcp 可以创建 Upstreams::Http::Http::HttpConnPool
+
+  // REGISTER_FACTORY(GenericConnPoolFactory, TcpProxy::GenericConnPoolFactory); in source/extensions/upstreams/tcp/generic/config.cc
+  // 以上是tcp proxy的tcp conn pool fatory，该文件router是http router，所以不相关，tcp proxy有自己的router实现会通过这个工厂函数创建conn pool
+
   if (cluster_->upstreamConfig().has_value()) {
     factory = Envoy::Config::Utility::getFactory<GenericConnPoolFactory>(
         cluster_->upstreamConfig().value());

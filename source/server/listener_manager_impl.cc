@@ -167,6 +167,10 @@ Network::ListenerFilterMatcherSharedPtr ProdListenerComponentFactory::createList
           listener_filter.filter_disabled()));
 }
 
+// NOTE(luyao): 创建listenSocket
+// using TcpListenSocket = NetworkListenSocket<NetworkSocketTrait<Socket::Type::Stream>>; in source/common/network/listen_socket_impl.h
+//    ---> ListenSocketImpl::setupSocket  --> bind(connection_info_provider_->localAddress())
+// 暂时没看到有listen(),只是bind到了一个地址
 Network::SocketSharedPtr ProdListenerComponentFactory::createListenSocket(
     Network::Address::InstanceConstSharedPtr address, Network::Socket::Type socket_type,
     const Network::Socket::OptionsSharedPtr& options, BindType bind_type,
@@ -209,6 +213,7 @@ Network::SocketSharedPtr ProdListenerComponentFactory::createListenSocket(
       ENVOY_LOG(debug, "obtained socket for address {} from parent", addr);
       Network::IoHandlePtr io_handle = std::make_unique<Network::IoSocketHandleImpl>(fd);
       if (socket_type == Network::Socket::Type::Stream) {
+        // NOTE(luyao): 创建TcpListenSocket对象，只是执行了bind
         return std::make_shared<Network::TcpListenSocket>(std::move(io_handle), address, options);
       } else {
         return std::make_shared<Network::UdpListenSocket>(std::move(io_handle), address, options);
@@ -588,8 +593,10 @@ ListenerManagerImpl::listeners(ListenerState state) {
   return ret;
 }
 
+// NOTE(luyao): 在所有的listen socket上真正地执行listen
 bool ListenerManagerImpl::doFinalPreWorkerListenerInit(ListenerImpl& listener) {
   TRY_ASSERT_MAIN_THREAD {
+    // ListenSocketFactoryImpl::doFinalPreWorkerInit() in source/server/listener_impl.cc
     listener.listenSocketFactory().doFinalPreWorkerInit();
     return true;
   }
@@ -1028,6 +1035,7 @@ Network::ListenSocketFactoryPtr ListenerManagerImpl::createListenSocketFactory(
   TRY_ASSERT_MAIN_THREAD {
     Network::SocketCreationOptions creation_options;
     creation_options.mptcp_enabled_ = listener.mptcpEnabled();
+    // NOTE(luyao): 在构造ListenSocketFactoryImpl对象的过程中，完成listen socket的创建，但是只是bind
     return std::make_unique<ListenSocketFactoryImpl>(
         factory_, listener.address(), socket_type, listener.listenSocketOptions(), listener.name(),
         listener.tcpBacklogSize(), bind_type, creation_options, server_.options().concurrency());

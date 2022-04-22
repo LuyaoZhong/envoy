@@ -75,6 +75,7 @@ void SslSocket::setTransportSocketCallbacks(Network::TransportSocketCallbacks& c
 
   // Use custom BIO that reads from/writes to IoHandle
   BIO* bio = BIO_new_io_handle(&callbacks_->ioHandle());
+  // NOTE(luyao): 设置ssl从bio里读，往bio里写，本质上实现与底层socket相关联
   SSL_set_bio(rawSsl(), bio, bio);
   SSL_set_ex_data(rawSsl(), ContextImpl::sslSocketIndex(), static_cast<void*>(callbacks_));
 }

@@ -31,7 +31,10 @@ ActiveTcpClient::ActiveTcpClient(Envoy::ConnectionPool::ConnPoolImplBase& parent
                                    host->cluster().stats().upstream_cx_tx_bytes_buffered_,
                                    &host->cluster().stats().bind_errors_, nullptr});
   connection_->noDelay(true);
+  // NOTE(luyao): ClientConnectionImpl::connect() in source/common/network/connection_impl.cc
+  // ClientConnectionImpl::connect() 会调用transport socket的connnect
   connection_->connect();
+  }
 }
 
 ActiveTcpClient::~ActiveTcpClient() {

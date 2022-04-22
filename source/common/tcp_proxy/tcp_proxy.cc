@@ -394,6 +394,7 @@ Network::FilterStatus Filter::initializeUpstreamConnection() {
     Network::Socket::appendOptions(upstream_options_, downstream_options);
   }
 
+  // NOTE(luyao): maybeTunnel创建conn pool，通过generic_conn_pool_->newStream最终创建到upstream的连接
   if (!maybeTunnel(*thread_local_cluster)) {
     // Either cluster is unknown or there are no healthy hosts. tcpConnPool() increments
     // cluster->stats().upstream_cx_none_healthy in the latter case.
@@ -422,6 +423,9 @@ bool Filter::maybeTunnel(Upstream::ThreadLocalCluster& cluster) {
     connecting_ = true;
     connect_attempts_++;
     getStreamInfo().setAttemptCount(connect_attempts_);
+    // 有两种pool
+    // TcpConnPool::newStream in source/common/tcp_proxy/upstream.cc
+    // HttpConnPool::newStream in source/common/tcp_proxy/upstream.cc
     generic_conn_pool_->newStream(*this);
     // Because we never return open connections to the pool, this either has a handle waiting on
     // connection completion, or onPoolFailure has been invoked. Either way, stop iteration.

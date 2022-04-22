@@ -241,10 +241,22 @@ void UpstreamRequest::onUpstreamHostSelected(Upstream::HostDescriptionConstShare
   parent_.onUpstreamHostSelected(host);
 }
 
+// NOTE(luyao): router的decodeHeaders 先创建一个UpstreamRequest对象，然后调用该UpstreamRequest::encodeHeaders
+// Filter::decodeHeaders in source/common/router/router.cc
+// 通过UpstreamRequest::encodeHeaders, 调用newStream，不同的conn pool有不同的实现
+// pool的初始化 std::unique_ptr<GenericConnPool> generic_conn_pool = createConnPool(*cluster) in source/common/router/router.cc
 void UpstreamRequest::encodeHeaders(bool end_stream) {
   ASSERT(!encode_complete_);
   encode_complete_ = end_stream;
+  // GenericConnPool 是tcp和http conn的封装，因此可能是tcp conn也可能是http conn
+  // generic 可以创建 Upstreams::Http::Tcp::TcpConnPool 和 Upstreams::Http::Http::HttpConnPool
+  // http 可以创建 Upstreams::Http::Http::HttpConnPool newStream in source/extensions/upstreams/http/http/upstream_request.cc
+  // tcp 可以创建 Upstreams::Http::Tcp::TcpConnPool newStream in source/extensions/upstreams/http/tcp/upstream_request.h
+  // 不论是tcp还是http，最终走到 ConnPoolImplBase::newStreamImpl in source/common/conn_pool/conn_pool_base.cc
 
+  // UpstreamRequest继承GenericConnectionPoolCallbacks，其中upstreamToDownstream callback将返回 UpstreamRequest的UpstreamToDownstream interface
+  // UpstreamRequest本身是继承UpstreamToDownstream <- Http::ResponseDecoder <- StreamDecoder
+  // 即相当于吧decoder传给newStream
   conn_pool_->newStream(this);
 }
 

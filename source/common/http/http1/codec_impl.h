@@ -428,6 +428,8 @@ private:
 /**
  * Implementation of Http::ServerConnection for HTTP/1.1.
  */
+// HTTP/1.1 的 ServerConnectionImpl，表示Envoy作为一个http server，在接收到downstream请求后，建立的一个Http::Connection
+// class ServerConnection in envoy/http/codec.h
 class ServerConnectionImpl : public ServerConnection, public ConnectionImpl {
 public:
   ServerConnectionImpl(Network::Connection& connection, CodecStats& stats,
@@ -546,6 +548,8 @@ private:
 /**
  * Implementation of Http::ClientConnection for HTTP/1.1.
  */
+// HTTP/1.1 的 ClientConnectionImpl，表示Envoy作为一个client，对upstream发起http请求，建立的一个Http::Connection
+// class ClientConnection in in envoy/http/codec.h
 class ClientConnectionImpl : public ClientConnection, public ConnectionImpl {
 public:
   ClientConnectionImpl(Network::Connection& connection, CodecStats& stats,

@@ -113,6 +113,7 @@ public:
   void encodeData(Buffer::Instance& data, bool end_stream) override;
   void addBytesSentCallback(Network::Connection::BytesSentCb cb) override;
   Tcp::ConnectionPool::ConnectionData* onDownstreamEvent(Network::ConnectionEvent event) override;
+  // NOTE(luyao): 在这里或者GenericUpstream里增加一个接口用来获取client connection
 
 private:
   Tcp::ConnectionPool::ConnectionDataPtr upstream_conn_data_;

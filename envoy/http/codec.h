@@ -551,12 +551,14 @@ public:
 /**
  * A server side HTTP connection.
  */
+// Http::ServerConnection 表示 Envoy 作为一个 http server，在接收到下游请求后，建立的一个 Http::Connection
 class ServerConnection : public virtual Connection {};
 using ServerConnectionPtr = std::unique_ptr<ServerConnection>;
 
 /**
  * A client side HTTP connection.
  */
+// Http::ClientConnection 表示 Envoy 作为一个 client，对上游 cluster 发起 http 请求，建立的一个 Http::Connection
 class ClientConnection : public virtual Connection {
 public:
   /**

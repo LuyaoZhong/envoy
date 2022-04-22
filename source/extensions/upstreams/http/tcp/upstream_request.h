@@ -28,8 +28,11 @@ public:
     ASSERT(is_connect);
     conn_pool_data_ = thread_local_cluster.tcpConnPool(route_entry.priority(), ctx);
   }
+  // NOTE(luyao): UpstreamRequest::encodeHeaders会根据conn pool调用newStream
   void newStream(Router::GenericConnectionPoolCallbacks* callbacks) override {
+    // NOTE(luyao): callbacks 是*UpstreamRequest
     callbacks_ = callbacks;
+    // NOTE(luyao): TcpPoolData::newConnection in envoy/upstream/thread_local_cluster.h
     upstream_handle_ = conn_pool_data_.value().newConnection(*this);
   }
 

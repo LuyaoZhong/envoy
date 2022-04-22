@@ -347,6 +347,7 @@ void ConnectionManagerImpl::handleCodecError(absl::string_view error) {
 }
 
 void ConnectionManagerImpl::createCodec(Buffer::Instance& data) {
+  // Http::ConnectionManagerImpl 接收到下游请求，通过配置对象创建一个 Http::ServerConnection 对象作为 codec
   ASSERT(!codec_);
   codec_ = config_.createCodec(read_callbacks_->connection(), data, *this);
 
@@ -368,6 +369,8 @@ void ConnectionManagerImpl::createCodec(Buffer::Instance& data) {
 }
 
 Network::FilterStatus ConnectionManagerImpl::onData(Buffer::Instance& data, bool) {
+  // Http::ConnectionManagerImpl 接收到下游请求，通过配置对象创建一个 Http::ServerConnection 对象作为 codec
+  // HttpConnectionManagerConfig::createCodec in source/extensions/filters/network/http_connection_manager/config.cc
   if (!codec_) {
     // Http3 codec should have been instantiated by now.
     createCodec(data);
@@ -376,7 +379,9 @@ Network::FilterStatus ConnectionManagerImpl::onData(Buffer::Instance& data, bool
   bool redispatch;
   do {
     redispatch = false;
-
+    // 将downstream所有的data都dispatch 到 codec， 即Http::ServerConnection
+    // ServerConnectionImpl::dispatch in source/common/http/http1/codec_impl.cc
+    // ServerConnectionImpl::dispatch in source/common/http/http2/codec_impl.cc
     const Status status = codec_->dispatch(data);
 
     if (isBufferFloodError(status) || isInboundFramesWithEmptyPayloadError(status)) {

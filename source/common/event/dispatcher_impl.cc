@@ -155,6 +155,10 @@ DispatcherImpl::createServerConnection(Network::ConnectionSocketPtr&& socket,
       *this, std::move(socket), std::move(transport_socket), stream_info, true);
 }
 
+// createServerConnection是把socket作为一个参数传递进去的，因为socket早已在ActiveTcpListener之类的地方创建了
+// 考虑支持一个类似的创建ClientConnection的方式，使得可以将前面network filter创建的client connection socket
+// 传递到后一个network filter当中
+// ClientConnectionImpl支持把socket作为一个参数传递，但是似乎没有任何地方使用这种方式
 Network::ClientConnectionPtr
 DispatcherImpl::createClientConnection(Network::Address::InstanceConstSharedPtr address,
                                        Network::Address::InstanceConstSharedPtr source_address,
@@ -169,6 +173,9 @@ DispatcherImpl::createClientConnection(Network::Address::InstanceConstSharedPtr 
   // TODO(lambdai): Return a closed connection if the factory is not found. Note that the caller
   // expects a non-null connection as of today so we cannot gracefully handle unsupported address
   // type.
+  // NOTE(luyao): 目前有两个ClientConnectionFactory
+  // DefaultClientConnectionFactory::createClientConnection in source/common/network/default_client_connection_factory.cc
+  // InternalClientConnectionFactory::createClientConnection in source/extensions/bootstrap/internal_listener/client_connection_factory.cc
   return factory->createClientConnection(*this, address, source_address,
                                          std::move(transport_socket), options);
 }
@@ -195,6 +202,8 @@ Network::ListenerPtr DispatcherImpl::createListener(Network::SocketSharedPtr&& s
                                                     Runtime::Loader& runtime, bool bind_to_port,
                                                     bool ignore_global_conn_limit) {
   ASSERT(isThreadSafe());
+  // NOTE(luyao): 创建一个TcpListener对象
+  // TcpListenerImpl::TcpListenerImpl in source/common/network/tcp_listener_impl.cc
   return std::make_unique<Network::TcpListenerImpl>(*this, random_generator_, runtime,
                                                     std::move(socket), cb, bind_to_port,
                                                     ignore_global_conn_limit);

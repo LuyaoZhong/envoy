@@ -9,6 +9,10 @@
 namespace Envoy {
 namespace Http {
 
+// NOTE(luyao): HttpConnPoolImplMixed初始化ActiveClient的时候是创建了一个tcp连接
+// 当Network::Connection发起connection event，ActiveTcpClient::onEvent in source/common/tcp/conn_pool.cc被调用
+// ActiveTcpClient::onEvent将执行 parent_.onConnectionEvent(ConnPoolImplBase::onConnectionEvent) in source/common/conn_pool/conn_pool_base.cc
+// ConnPoolImplBase::onConnectionEvent将执行onConnected(),即当前的HttpConnPoolImplMixed::onConnected
 Envoy::ConnectionPool::ActiveClientPtr HttpConnPoolImplMixed::instantiateActiveClient() {
   return std::make_unique<Tcp::ActiveTcpClient>(*this,
                                                 Envoy::ConnectionPool::ConnPoolImplBase::host(), 1);
@@ -19,9 +23,13 @@ HttpConnPoolImplMixed::createCodecClient(Upstream::Host::CreateConnectionData& d
   auto protocol = protocol_ == Protocol::Http11 ? CodecType::HTTP1 : CodecType::HTTP2;
   CodecClientPtr codec{new CodecClientProd(protocol, std::move(data.connection_),
                                            data.host_description_, dispatcher_, random_generator_)};
+  // NOTE(luyao): CodecClientProd对象创建的同时，会在client socker上执行 connect操作
+  // CodecClientProd::CodecClientProd in source/common/http/codec_client.cc
   return codec;
 }
 
+// NOTE(luyao): to be investigated 在http conn pool重用 tcp 连接
+// ConnPoolImplBase::onConnectionEvent -> onConnected
 void HttpConnPoolImplMixed::onConnected(Envoy::ConnectionPool::ActiveClient& client) {
   // onConnected is called under the stack of the Network::Connection raising
   // the Connected event. The first time it is called, it's called for a TCP
@@ -46,7 +54,7 @@ void HttpConnPoolImplMixed::onConnected(Envoy::ConnectionPool::ActiveClient& cli
       protocol_ = Http::Protocol::Http2;
     }
   }
-
+  // NOTE(luyao): 这个地方用现有的tcp client 重新构造了一个Envoy::Http::ActiveClient #Line60
   Upstream::Host::CreateConnectionData data{std::move(tcp_client->connection_),
                                             client.real_host_description_};
   // As this connection comes from the tcp connection pool, it will be

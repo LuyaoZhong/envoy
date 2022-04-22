@@ -16,6 +16,9 @@ ActiveTcpListener::ActiveTcpListener(Network::TcpConnectionHandler& parent,
                                      Network::ListenerConfig& config, Runtime::Loader& runtime,
                                      uint32_t worker_index)
     : OwnedActiveStreamListenerBase(parent, parent.dispatcher(),
+    // NOTE(luyao): DispatcherImpl::createListener in source/common/event/dispatcher_impl.cc
+    // 这个时候socket已经创建了，getListenSocket是根据worker_index取出socket
+    // ListenSocketFactoryImpl::getListenSocket in source/server/listener_impl.cc
                                     parent.dispatcher().createListener(
                                         config.listenSocketFactory().getListenSocket(worker_index),
                                         *this, runtime, config.bindToPort(),

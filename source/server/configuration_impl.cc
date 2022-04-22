@@ -29,15 +29,17 @@ namespace Envoy {
 namespace Server {
 namespace Configuration {
 
+// NOTE(luyao): ListenerImpl::createNetworkFilterChain in source/server/listener_impl.cc  ---> this function
 bool FilterChainUtility::buildFilterChain(Network::FilterManager& filter_manager,
                                           const std::vector<Network::FilterFactoryCb>& factories) {
   for (const Network::FilterFactoryCb& factory : factories) {
     factory(filter_manager);
   }
-
+  // NOTE(luyao): FilterManagerImpl::onContinueReading in source/common/network/filter_manager_impl.cc
   return filter_manager.initializeReadFilters();
 }
 
+// NOTE(luyao): ListenerImpl::createListenerFilterChain in source/server/listener_impl.cc
 bool FilterChainUtility::buildFilterChain(
     Network::ListenerFilterManager& filter_manager,
     const std::vector<Network::ListenerFilterFactoryCb>& factories) {

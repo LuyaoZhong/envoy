@@ -177,7 +177,12 @@ public:
       }
     }
   }
+  // NOTE(luyao): UpstreamRequest::encodeHeaders ---> conn_pool_->newStream ---> conn_pool_data_.value().newConnection ---> pool_->newConnection
+  // Tcp 和 http 最后都走到newStreamImpl
+  // ConnPoolImplBase::newStreamImpl in source/common/conn_pool/conn_pool_base.cc
   ConnectionPool::Cancellable* newConnection(Tcp::ConnectionPool::Callbacks& callbacks) override {
+    // NOTE(luyao): callbacks 是 TcpConnPool
+    // in source/common/tcp_proxy/upstream.h or source/extensions/upstreams/http/tcp/upstream_request.h
     TcpAttachContext context(&callbacks);
     // TLS early data over TCP is not supported yet.
     return newStreamImpl(context, /*can_send_early_data=*/false);
@@ -209,6 +214,8 @@ public:
     auto* callbacks = typedContext<TcpAttachContext>(context).callbacks_;
     std::unique_ptr<Envoy::Tcp::ConnectionPool::ConnectionData> connection_data =
         std::make_unique<ActiveTcpClient::TcpConnectionData>(*tcp_client, *tcp_client->connection_);
+    // NOTE(luyao): 这里的callbacks是Tcp::ConnectionPool::Callbacks
+    // 可能是TcpConnPool in source/extensions/upstreams/http/tcp/upstream_request.h 或者其他
     callbacks->onPoolReady(std::move(connection_data), tcp_client->real_host_description_);
   }
 

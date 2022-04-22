@@ -347,6 +347,7 @@ Network::ClientConnectionPtr HostImpl::createConnection(
                 address, cluster.sourceAddress(),
                 socket_factory.createTransportSocket(std::move(transport_socket_options)),
                 connection_options);
+  // NOTE(luyao): DispatcherImpl::createClientConnection in source/common/event/dispatcher_impl.cc
 
   connection->connectionInfoSetter().enableSettingInterfaceName(
       cluster.setLocalInterfaceNameOnUpstreamConnections());

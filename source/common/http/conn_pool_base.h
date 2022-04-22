@@ -101,9 +101,18 @@ public:
                                             concurrent_stream_limit) {
     // The static cast makes sure we call the base class host() and not
     // HttpConnPoolImplBase::host which is of a different type.
+    // NOTE(luyao): 创建连接到upstream
+    // HostImpl::createConnection in source/common/upstream/upstream_impl.cc
     Upstream::Host::CreateConnectionData data =
         static_cast<Envoy::ConnectionPool::ConnPoolImplBase*>(&parent)->host()->createConnection(
             parent.dispatcher(), parent.socketOptions(), parent.transportSocketOptions());
+    // 先创建connection对象，此时并没有在client socket上执行connect建立连接
+    // 在initialize，通过parent.createCodecClient 才建立连接
+    // HttpConnPoolImplMixed::createCodecClient in source/common/http/mixed_conn_pool.cc
+    //   ---> CodecClientProd::CodecClientProd in source/common/http/codec_client.cc
+    // http1 & http2 allocateConnPool in source/common/http/http1/conn_pool.cc
+    //   ---> FixedHttpConnPoolImpl::createCodecClient in current file
+    //        ---> CodecClientProd in source/common/http/codec_client.h
     initialize(data, parent);
   }
 

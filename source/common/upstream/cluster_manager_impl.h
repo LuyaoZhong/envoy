@@ -491,9 +491,16 @@ private:
       const PrioritySet& prioritySet() override { return priority_set_; }
       ClusterInfoConstSharedPtr info() override { return cluster_info_; }
       LoadBalancer& loadBalancer() override { return *lb_; }
+      // NOTE(luyao): HttpPoolData in envoy/upstream/thread_local_cluster.h
+      //   关键方法是newStream  具体实际调用以下类实现的newStream
+      // Http::HttpConnPoolImplBase in source/common/http/conn_pool_base.cc
       absl::optional<HttpPoolData> httpConnPool(ResourcePriority priority,
                                                 absl::optional<Http::Protocol> downstream_protocol,
                                                 LoadBalancerContext* context) override;
+      // NOTE(luyao): TcpPoolData in envoy/upstream/thread_local_cluster.h
+      //   关键方法是newConnection 最后实际调用以下类实现的newConnection
+      // Tcp::ConnPoolImpl in source/common/tcp/conn_pool.h
+      // Tcp::OriginalConnPoolImpl in source/common/tcp/original_conn_pool.cc
       absl::optional<TcpPoolData> tcpConnPool(ResourcePriority priority,
                                               LoadBalancerContext* context) override;
       Host::CreateConnectionData tcpConn(LoadBalancerContext* context) override;

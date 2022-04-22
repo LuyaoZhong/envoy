@@ -29,6 +29,12 @@ public:
     pool_data_ =
         thread_local_cluster.httpConnPool(route_entry.priority(), downstream_protocol, ctx);
   }
+  HttpConnPool(Upstream::ThreadLocalCluster& thread_local_cluster,
+               absl::optional<Envoy::Http::Protocol> downstream_protocol,
+               Upstream::LoadBalancerContext* ctx) {
+    pool_data_ =
+        thread_local_cluster.httpConnPool(Upstream::ResourcePriority::Default, downstream_protocol, ctx);
+  }
   ~HttpConnPool() override {
     ASSERT(conn_pool_stream_handle_ == nullptr, "conn_pool_stream_handle not null");
   }
@@ -57,6 +63,7 @@ protected:
 
 class HttpUpstream : public Router::GenericUpstream, public Envoy::Http::StreamCallbacks {
 public:
+// NOTE(luyao): 增加一个接口使得可以获取client connection from upstream_request
   HttpUpstream(Router::UpstreamToDownstream& upstream_request, Envoy::Http::RequestEncoder* encoder)
       : upstream_request_(upstream_request), request_encoder_(encoder) {
     request_encoder_->getStream().addCallbacks(*this);

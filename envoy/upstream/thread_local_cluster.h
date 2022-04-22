@@ -20,6 +20,10 @@ public:
   /**
    * See documentation of Http::ConnectionPool::Instance.
    */
+  // NOTE(luyao): UpstreamRequest::encodeHeaders ---> conn_pool_->newStream ---> pool_data_.value().newStream
+  // 这里的pool是 Http::ConnectionPool::Instance
+  // HttpConnPoolImplBase::newStream in source/common/http/conn_pool_base.cc
+  // response_decoder是UpstreamRequest
   Envoy::Http::ConnectionPool::Cancellable*
   newStream(Http::ResponseDecoder& response_decoder,
             Envoy::Http::ConnectionPool::Callbacks& callbacks,
@@ -54,7 +58,12 @@ public:
 
   Envoy::Tcp::ConnectionPool::Cancellable*
   newConnection(Envoy::Tcp::ConnectionPool::Callbacks& callbacks) {
+    // NOTE(luyao): callbacks 是 TcpConnPool
+    // in source/common/tcp_proxy/upstream.h or source/extensions/upstreams/http/tcp/upstream_request.h
     on_new_connection_();
+    // NOTE(luyao): UpstreamRequest::encodeHeaders ---> conn_pool_->newStream ---> conn_pool_data_.value().newConnection
+    // 这里的pool_是 Tcp::ConnectionPool::Instance
+    // Tcp::ConnPoolImpl::newConnection in source/common/tcp/conn_pool.h
     return pool_->newConnection(callbacks);
   }
 
