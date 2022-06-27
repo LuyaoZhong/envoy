@@ -257,9 +257,8 @@ message CommonTlsContext {
 
   // Certificate provider instance for fetching TLS certs.
   //
-  // Only one of ``tls_certificates``, ``tls_certificate_sds_secret_configs``,
-  // and ``tls_certificate_provider_instance`` may be used.
-  // [#not-implemented-hide:]
+  // Only one of *tls_certificates*, *tls_certificate_sds_secret_configs*,
+  // and *tls_certificate_provider_instance* may be used.
   CertificateProviderPluginInstance tls_certificate_provider_instance = 14;
 
   // Certificate provider for fetching TLS certificates.
