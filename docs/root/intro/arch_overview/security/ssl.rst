@@ -114,19 +114,33 @@ Certificate selection
 ---------------------
 
 :ref:`DownstreamTlsContexts <envoy_v3_api_msg_extensions.transport_sockets.tls.v3.DownstreamTlsContext>` support multiple TLS
-certificates. These may be a mix of RSA and P-256 ECDSA certificates. The following rules apply:
+certificates. These may be a mix of RSA and P-256 ECDSA certificates for multiple services. The following rules apply:
 
+Certificate config/loading rules:
 * Only one certificate of a particular type (RSA or ECDSA) may be specified.
 * Non-P-256 server ECDSA certificates are rejected.
-* If the client supports P-256 ECDSA, a P-256 ECDSA certificate will be selected if one is present in the
-  :ref:`DownstreamTlsContext <envoy_v3_api_msg_extensions.transport_sockets.tls.v3.DownstreamTlsContext>`
-  and it is in compliance with the OCSP policy.
-* If the client only supports RSA certificates, a RSA certificate will be selected if present in the
-  :ref:`DownstreamTlsContext <envoy_v3_api_msg_extensions.transport_sockets.tls.v3.DownstreamTlsContext>`.
-* Otherwise, the first certificate listed is used. This will result in a failed handshake if the
-  client only supports RSA certificates and the server only has ECDSA certificates.
 * Static and SDS certificates may not be mixed in a given :ref:`DownstreamTlsContext
   <envoy_v3_api_msg_extensions.transport_sockets.tls.v3.DownstreamTlsContext>`.
+
+SNI matching rules:
+* If the client support SNI, a certificate with proper DNS SANs or Subject Common Name should be selected
+* If no certificate is matched to SNI, the connection is refused.
+* Otherwise, particular type (RSA or ECDSA) matching will be executed after SNI matching, each time a
+  SNI-matched certificate is found, terminate the loop searching if type matched and continue the loop
+  if type not matched. Therefore, the first certificate that matching both SNI and type will be selected,
+  the last certificate that only matching SNI will be selected if all SNI-matched certificates don't match type.
+* If the client does not support SNI, skip the SNI matching.
+
+Type matching(ECDSA or RSA) rules:
+* Type matching is executed after SNI matching if the client support SNI
+* If the client supports P-256 ECDSA, it will try to find the first P-256 ECDSA certificate
+* If the client only supports RSA certificates, it will try to find first RSA certificate
+* If no exact match, fallback to the first certificate if client does not have SNI, or fallback to the last
+  SNI-matched certificate if client has SNI.
+* The certificate that it fallbacks to might result in a failed handshake. For instance, a client only supports
+  RSA certificates and the certificate only support ECDSA.
+
+OCSP rules:
 * The selected certificate must adhere to the OCSP policy. If no
   such certificate is found, the connection is refused.
 
