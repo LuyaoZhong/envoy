@@ -1,6 +1,7 @@
 #include "source/extensions/transport_sockets/tls/context_impl.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -186,6 +187,9 @@ ContextImpl::ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& c
         ctx.loadCertificateChain(tls_certificate.certificateChain(),
                                  tls_certificate.certificateChainPath());
       }
+      // Load DNS SAN entries and Subject Common Name after certificate chain loaded
+      ctx.loadDnsSans();
+      ctx.loadSubjectCN();
 
       // The must staple extension means the certificate promises to carry
       // with it an OCSP staple. https://tools.ietf.org/html/rfc7633#section-6
@@ -1081,24 +1085,55 @@ enum ssl_select_cert_result_t
 ServerContextImpl::selectTlsContext(const SSL_CLIENT_HELLO* ssl_client_hello) {
   const bool client_ecdsa_capable = isClientEcdsaCapable(ssl_client_hello);
   const bool client_ocsp_capable = isClientOcspCapable(ssl_client_hello);
+  std::string sni =
+      std::string(SSL_get_servername(ssl_client_hello->ssl, TLSEXT_NAMETYPE_host_name));
 
-  // Fallback on first certificate.
-  const TlsContext* selected_ctx = &tls_contexts_[0];
-  auto ocsp_staple_action = ocspStapleAction(*selected_ctx, client_ocsp_capable);
-  for (const auto& ctx : tls_contexts_) {
-    if (client_ecdsa_capable != ctx.is_ecdsa_) {
-      continue;
+  const TlsContext* selected_ctx = nullptr;
+
+  // do SNI matching and signature algorithm matching if SNI exists
+  if (!sni.empty()) {
+    for (const auto& ctx : tls_contexts_) {
+      if (!ctx.has_sans_) {
+        // https://www.rfc-editor.org/rfc/rfc6125#section-6.4.4
+        // As noted, a client MUST NOT seek a match for a reference identifier
+        // of CN-ID if the presented identifiers include a DNS-ID, SRV-ID,
+        // URI-ID, or any application-specific identifier types supported by the
+        // client.
+        if (sni == ctx.subject_cn_) {
+          selected_ctx = &ctx;
+        }
+      } else if (Utility::dnsNameMatchMuliPatterns(sni, ctx.dns_sans_)) {
+        // https://datatracker.ietf.org/doc/html/rfc6066#section-3
+        // Currently, the only server names supported are DNS hostnames, so we
+        // only match sni to dns san entries.
+        selected_ctx = &ctx;
+      }
+
+      if (client_ecdsa_capable == ctx.is_ecdsa_ && selected_ctx != nullptr) {
+        // selected_ctx matches both SNI and signature algorithm
+        break;
+      }
+      // if no ctx matches signature algorithm, the last ctx(if exists)
+      // which matches SNI will be selected
     }
-
-    auto action = ocspStapleAction(ctx, client_ocsp_capable);
-    if (action == OcspStapleAction::Fail) {
-      continue;
+    if (selected_ctx == nullptr) {
+      // no ctx matches SNI
+      return ssl_select_cert_error;
     }
-
-    selected_ctx = &ctx;
-    ocsp_staple_action = action;
-    break;
   }
+  // do signature algorithm matching only if SNI does Not exist
+  else {
+    // Fallback on first certificate.
+    selected_ctx = &tls_contexts_[0];
+    for (const auto& ctx : tls_contexts_) {
+      if (client_ecdsa_capable == ctx.is_ecdsa_) {
+        selected_ctx = &ctx;
+        break;
+      }
+    }
+  }
+
+  auto ocsp_staple_action = ocspStapleAction(*selected_ctx, client_ocsp_capable);
 
   // Apply the selected context. This must be done before OCSP stapling below
   // since applying the context can remove the previously-set OCSP response.
@@ -1297,6 +1332,32 @@ void TlsContext::checkPrivateKey(const bssl::UniquePtr<EVP_PKEY>& pkey,
   UNREFERENCED_PARAMETER(pkey);
   UNREFERENCED_PARAMETER(key_path);
 #endif
+}
+
+void TlsContext::loadDnsSans() {
+  if (cert_chain_ == nullptr) {
+    return;
+  }
+  has_sans_ =
+      X509_get_ext_d2i(cert_chain_.get(), NID_subject_alt_name, nullptr, nullptr) != nullptr;
+  dns_sans_ = Utility::getSubjectAltNames(*cert_chain_, GEN_DNS);
+}
+
+void TlsContext::loadSubjectCN() {
+  if (cert_chain_ == nullptr) {
+    return;
+  }
+  X509_NAME* cert_subject = X509_get_subject_name(cert_chain_.get());
+  const int cn_index = X509_NAME_get_index_by_NID(cert_subject, NID_commonName, -1);
+  if (cn_index >= 0) {
+    X509_NAME_ENTRY* cn_entry = X509_NAME_get_entry(cert_subject, cn_index);
+    if (cn_entry) {
+      ASN1_STRING* cn_asn1 = X509_NAME_ENTRY_get_data(cn_entry);
+      if (cn_asn1) {
+        subject_cn_ = std::string(reinterpret_cast<char const*>(ASN1_STRING_data(cn_asn1)));
+      }
+    }
+  }
 }
 
 } // namespace Tls

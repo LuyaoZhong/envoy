@@ -42,7 +42,10 @@ struct TlsContext {
   bssl::UniquePtr<SSL_CTX> ssl_ctx_;
   bssl::UniquePtr<X509> cert_chain_;
   std::string cert_chain_file_path_;
+  std::vector<std::string> dns_sans_;
+  std::string subject_cn_;
   Ocsp::OcspResponseWrapperPtr ocsp_response_;
+  bool has_sans_{};
   bool is_ecdsa_{};
   bool is_must_staple_{};
   Ssl::PrivateKeyMethodProviderSharedPtr private_key_method_provider_{};
@@ -58,6 +61,8 @@ struct TlsContext {
   void loadPkcs12(const std::string& data, const std::string& data_path,
                   const std::string& password);
   void checkPrivateKey(const bssl::UniquePtr<EVP_PKEY>& pkey, const std::string& key_path);
+  void loadDnsSans();
+  void loadSubjectCN();
 };
 
 class ContextImpl : public virtual Envoy::Ssl::Context,

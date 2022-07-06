@@ -1,6 +1,7 @@
 #include "source/extensions/transport_sockets/tls/utility.h"
 
 #include <cstdint>
+#include <vector>
 
 #include "source/common/common/assert.h"
 #include "source/common/common/empty_string.h"
@@ -85,6 +86,16 @@ bool Utility::labelWildcardMatch(absl::string_view dns_label, absl::string_view 
     return (pattern.size() <= dns_label.size() + 1) &&
            absl::StartsWith(dns_label, split_pattern[0]) &&
            absl::EndsWith(dns_label, split_pattern[1]);
+  }
+  return false;
+}
+
+bool Utility::dnsNameMatchMuliPatterns(absl::string_view dns_name,
+                                       std::vector<std::string> patterns) {
+  for (const auto& pattern : patterns) {
+    if (Utility::dnsNameMatch(dns_name, pattern)) {
+      return true;
+    }
   }
   return false;
 }
