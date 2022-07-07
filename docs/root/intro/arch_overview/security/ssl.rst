@@ -117,12 +117,14 @@ Certificate selection
 certificates. These may be a mix of RSA and P-256 ECDSA certificates for multiple services. The following rules apply:
 
 Certificate config/loading rules:
+
 * Only one certificate of a particular type (RSA or ECDSA) may be specified.
 * Non-P-256 server ECDSA certificates are rejected.
 * Static and SDS certificates may not be mixed in a given :ref:`DownstreamTlsContext
   <envoy_v3_api_msg_extensions.transport_sockets.tls.v3.DownstreamTlsContext>`.
 
 SNI matching rules:
+
 * If the client support SNI, a certificate with proper DNS SANs or Subject Common Name should be selected
 * If no certificate is matched to SNI, the connection is refused.
 * Otherwise, particular type (RSA or ECDSA) matching will be executed after SNI matching, each time a
@@ -132,6 +134,7 @@ SNI matching rules:
 * If the client does not support SNI, skip the SNI matching.
 
 Type matching(ECDSA or RSA) rules:
+
 * Type matching is executed after SNI matching if the client support SNI
 * If the client supports P-256 ECDSA, it will try to find the first P-256 ECDSA certificate
 * If the client only supports RSA certificates, it will try to find first RSA certificate
@@ -141,6 +144,7 @@ Type matching(ECDSA or RSA) rules:
   RSA certificates and the certificate only support ECDSA.
 
 OCSP rules:
+
 * The selected certificate must adhere to the OCSP policy. If no
   such certificate is found, the connection is refused.
 
