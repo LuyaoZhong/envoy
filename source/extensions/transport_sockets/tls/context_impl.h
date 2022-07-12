@@ -3,6 +3,7 @@
 #include <array>
 #include <deque>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -42,10 +43,9 @@ struct TlsContext {
   bssl::UniquePtr<SSL_CTX> ssl_ctx_;
   bssl::UniquePtr<X509> cert_chain_;
   std::string cert_chain_file_path_;
-  std::vector<std::string> dns_sans_;
-  std::string subject_cn_;
+  std::vector<std::string> server_name_patterns_;
+  bssl::UniquePtr<GENERAL_NAMES> san_names_;
   Ocsp::OcspResponseWrapperPtr ocsp_response_;
-  bool has_sans_{};
   bool is_ecdsa_{};
   bool is_must_staple_{};
   Ssl::PrivateKeyMethodProviderSharedPtr private_key_method_provider_{};
@@ -61,9 +61,11 @@ struct TlsContext {
   void loadPkcs12(const std::string& data, const std::string& data_path,
                   const std::string& password);
   void checkPrivateKey(const bssl::UniquePtr<EVP_PKEY>& pkey, const std::string& key_path);
-  void loadDnsSans();
-  void loadSubjectCN();
+  void loadServerNamePatterns();
+  void addServerNamePattern(const std::string& name);
 };
+
+using TlsContextSharedPtr = std::shared_ptr<TlsContext>;
 
 class ContextImpl : public virtual Envoy::Ssl::Context,
                     protected Logger::Loggable<Logger::Id::config> {
@@ -101,6 +103,16 @@ protected:
   ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& config,
               TimeSource& time_source);
 
+  // Currently, at most one certificate of a given key type may be specified for each exact
+  // server name or wildcard domain name.
+  using PkeyTypesMap = absl::flat_hash_map<const int, TlsContextSharedPtr>;
+  using PkeyTypesMapSharedPtr = std::shared_ptr<PkeyTypesMap>;
+  // Both exact server names and wildcard domains are part of the same map, in which wildcard
+  // domains are prefixed with "." (i.e. ".example.com" for "*.example.com") to differentiate
+  // between exact and wildcard entries.
+  using ServerNamesMap = absl::flat_hash_map<std::string, PkeyTypesMapSharedPtr>;
+  using ServerNamesMapSharedPtr = std::shared_ptr<ServerNamesMap>;
+
   /**
    * The global SSL-library index used for storing a pointer to the context
    * in the SSL instance, for retrieval in callbacks.
@@ -121,6 +133,8 @@ protected:
   // potentially switch to a different CertificateContext based on certificate
   // selection.
   std::vector<TlsContext> tls_contexts_;
+  ServerNamesMapSharedPtr server_names_map_;
+
   CertValidatorPtr cert_validator_;
   Stats::Scope& scope_;
   SslStats stats_;

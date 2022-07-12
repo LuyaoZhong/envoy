@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "envoy/admin/v3/certs.pb.h"
@@ -174,7 +175,7 @@ ContextImpl::ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& c
   }
 #endif
 
-  absl::node_hash_set<int> cert_pkey_ids;
+  server_names_map_ = std::make_shared<ServerNamesMap>();
   if (!capabilities_.provides_certificates) {
     for (uint32_t i = 0; i < tls_certificates.size(); ++i) {
       auto& ctx = tls_contexts_[i];
@@ -187,9 +188,6 @@ ContextImpl::ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& c
         ctx.loadCertificateChain(tls_certificate.certificateChain(),
                                  tls_certificate.certificateChainPath());
       }
-      // Load DNS SAN entries and Subject Common Name after certificate chain loaded
-      ctx.loadDnsSans();
-      ctx.loadSubjectCN();
 
       // The must staple extension means the certificate promises to carry
       // with it an OCSP staple. https://tools.ietf.org/html/rfc7633#section-6
@@ -202,11 +200,6 @@ ContextImpl::ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& c
 
       bssl::UniquePtr<EVP_PKEY> public_key(X509_get_pubkey(ctx.cert_chain_.get()));
       const int pkey_id = EVP_PKEY_id(public_key.get());
-      if (!cert_pkey_ids.insert(pkey_id).second) {
-        throw EnvoyException(fmt::format("Failed to load certificate chain from {}, at most one "
-                                         "certificate of a given type may be specified",
-                                         ctx.cert_chain_file_path_));
-      }
       ctx.is_ecdsa_ = pkey_id == EVP_PKEY_EC;
       switch (pkey_id) {
       case EVP_PKEY_EC: {
@@ -277,6 +270,26 @@ ContextImpl::ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& c
         // Load private key.
         ctx.loadPrivateKey(tls_certificate.privateKey(), tls_certificate.privateKeyPath(),
                            tls_certificate.password());
+      }
+
+      // Load DNS SAN entries and Subject Common Name as server name patterns after certificate chain loaded,
+      // which will be used to match SNI.
+      ctx.loadServerNamePatterns();
+      for (auto& server_name_pattern : ctx.server_name_patterns_) {
+        auto sn_result = server_names_map_->find(server_name_pattern);
+        if (sn_result != server_names_map_->end()) {
+          auto pt_result = sn_result->second->find(pkey_id);
+          if (pt_result != sn_result->second->end()) {
+            throw EnvoyException(fmt::format("Failed to load certificate chain from {}, at most one "
+                                         "certificate of a given type may be specified for each DNS SAN entry or Subject CN",
+                                         ctx.cert_chain_file_path_));
+          }
+          sn_result->second->insert(std::pair<const int, TlsContextSharedPtr>(pkey_id, &ctx));
+        } else {
+          PkeyTypesMapSharedPtr pkey_types_map = std::make_shared<PkeyTypesMap>();
+          pkey_types_map->insert(std::pair<const int, TlsContextSharedPtr>(pkey_id, &ctx));
+          server_names_map_->insert({server_name_pattern, pkey_types_map});
+        }
       }
     }
   }
@@ -831,11 +844,8 @@ ServerContextImpl::generateHashForSessionContextId(const std::vector<std::string
       }
 
       unsigned san_count = 0;
-      bssl::UniquePtr<GENERAL_NAMES> san_names(static_cast<GENERAL_NAMES*>(
-          X509_get_ext_d2i(cert, NID_subject_alt_name, nullptr, nullptr)));
-
-      if (san_names != nullptr) {
-        for (const GENERAL_NAME* san : san_names.get()) {
+      if (ctx.san_names_.get() != nullptr) {
+        for (const GENERAL_NAME* san : ctx.san_names_.get()) {
           switch (san->type) {
           case GEN_IPADD:
             rc = EVP_DigestUpdate(md.get(), san->d.iPAddress->data, san->d.iPAddress->length);
@@ -1090,38 +1100,46 @@ ServerContextImpl::selectTlsContext(const SSL_CLIENT_HELLO* ssl_client_hello) {
 
   const TlsContext* selected_ctx = nullptr;
 
-  // do SNI matching and signature algorithm matching if SNI exists
+  // do SNI matching and pkey type matching if SNI exists
   if (!sni.empty()) {
-    for (const auto& ctx : tls_contexts_) {
-      if (!ctx.has_sans_) {
-        // https://www.rfc-editor.org/rfc/rfc6125#section-6.4.4
-        // As noted, a client MUST NOT seek a match for a reference identifier
-        // of CN-ID if the presented identifiers include a DNS-ID, SRV-ID,
-        // URI-ID, or any application-specific identifier types supported by the
-        // client.
-        if (sni == ctx.subject_cn_) {
-          selected_ctx = &ctx;
+    PkeyTypesMapSharedPtr pkey_types_map;
+    // Match on exact server name, i.e. "www.example.com" for "www.example.com".
+    const auto server_name_exact_match = server_names_map_->find(sni);
+    if (server_name_exact_match != server_names_map_->end()) {
+      pkey_types_map = server_name_exact_match->second;
+    } else {
+      // Match on all wildcard domains, i.e. ".example.com" and ".com" for "www.example.com".
+      size_t pos = sni.find('.', 1);
+      while (pos < sni.size() - 1 && pos != std::string::npos) {
+        const std::string wildcard = sni.substr(pos);
+        const auto server_name_wildcard_match = server_names_map_->find(wildcard);
+        if (server_name_wildcard_match != server_names_map_->end()) {
+          pkey_types_map = server_name_wildcard_match->second;
+          break;
         }
-      } else if (Utility::dnsNameMatchMuliPatterns(sni, ctx.dns_sans_)) {
-        // https://datatracker.ietf.org/doc/html/rfc6066#section-3
-        // Currently, the only server names supported are DNS hostnames, so we
-        // only match sni to dns san entries.
-        selected_ctx = &ctx;
+        pos = sni.find('.', pos + 1);
       }
-
-      if (client_ecdsa_capable == ctx.is_ecdsa_ && selected_ctx != nullptr) {
-        // selected_ctx matches both SNI and signature algorithm
-        break;
-      }
-      // if no ctx matches signature algorithm, the last ctx(if exists)
-      // which matches SNI will be selected
     }
+
+    if (pkey_types_map != nullptr) {
+      auto it = pkey_types_map->begin();
+      // Fallback on first SNI-matched certificate
+      selected_ctx = it->second.get();
+      while (it != pkey_types_map->end()) {
+        if (client_ecdsa_capable == it->second->is_ecdsa_) {
+            selected_ctx = it->second.get();
+            break;
+        }
+        ++it;
+      }
+    }
+
     if (selected_ctx == nullptr) {
-      // no ctx matches SNI
+      // make the handshake fail if there is no ctx matched for SNI
       return ssl_select_cert_error;
     }
   }
-  // do signature algorithm matching only if SNI does Not exist
+  // do pkey type matching only if SNI does Not exist
   else {
     // Fallback on first certificate.
     selected_ctx = &tls_contexts_[0];
@@ -1334,31 +1352,50 @@ void TlsContext::checkPrivateKey(const bssl::UniquePtr<EVP_PKEY>& pkey,
 #endif
 }
 
-void TlsContext::loadDnsSans() {
+void TlsContext::loadServerNamePatterns() {
   if (cert_chain_ == nullptr) {
     return;
   }
-  has_sans_ =
-      X509_get_ext_d2i(cert_chain_.get(), NID_subject_alt_name, nullptr, nullptr) != nullptr;
-  dns_sans_ = Utility::getSubjectAltNames(*cert_chain_, GEN_DNS);
-}
+  bssl::UniquePtr<GENERAL_NAMES> san_names(static_cast<GENERAL_NAMES*>(X509_get_ext_d2i(cert_chain_.get(), NID_subject_alt_name, nullptr, nullptr)));
+  std::swap(san_names, san_names_);
+  auto dns_sans = Utility::getSubjectAltNames(*cert_chain_, GEN_DNS);
+  // https://datatracker.ietf.org/doc/html/rfc6066#section-3
+  // Currently, the only server names supported are DNS hostnames, so we
+  // only save dns san entries to match SNI.
+  for (const auto& san: dns_sans) {
+    addServerNamePattern(san);
+  }
 
-void TlsContext::loadSubjectCN() {
-  if (cert_chain_ == nullptr) {
-    return;
-  }
-  X509_NAME* cert_subject = X509_get_subject_name(cert_chain_.get());
-  const int cn_index = X509_NAME_get_index_by_NID(cert_subject, NID_commonName, -1);
-  if (cn_index >= 0) {
-    X509_NAME_ENTRY* cn_entry = X509_NAME_get_entry(cert_subject, cn_index);
-    if (cn_entry) {
-      ASN1_STRING* cn_asn1 = X509_NAME_ENTRY_get_data(cn_entry);
-      if (cn_asn1) {
-        subject_cn_ = std::string(reinterpret_cast<char const*>(ASN1_STRING_data(cn_asn1)));
+  // https://www.rfc-editor.org/rfc/rfc6125#section-6.4.4
+  // As noted, a client MUST NOT seek a match for a reference identifier
+  // of CN-ID if the presented identifiers include a DNS-ID, SRV-ID,
+  // URI-ID, or any application-specific identifier types supported by the
+  // client.
+  if (san_names_.get() == nullptr) {
+    X509_NAME* cert_subject = X509_get_subject_name(cert_chain_.get());
+    const int cn_index = X509_NAME_get_index_by_NID(cert_subject, NID_commonName, -1);
+    if (cn_index >= 0) {
+      X509_NAME_ENTRY* cn_entry = X509_NAME_get_entry(cert_subject, cn_index);
+      if (cn_entry) {
+        ASN1_STRING* cn_asn1 = X509_NAME_ENTRY_get_data(cn_entry);
+        if (cn_asn1) {
+          const auto& subject_cn = std::string(reinterpret_cast<char const*>(ASN1_STRING_data(cn_asn1)));
+          addServerNamePattern(subject_cn);
+        }
       }
     }
+
   }
 }
+
+void TlsContext::addServerNamePattern(const std::string& name) {
+  if (absl::StartsWith(name, "*.")) {
+      server_name_patterns_.emplace_back(name.substr(1));
+  } else {
+    server_name_patterns_.emplace_back(name);
+  }
+}
+
 
 } // namespace Tls
 } // namespace TransportSockets
