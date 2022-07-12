@@ -272,17 +272,18 @@ ContextImpl::ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& c
                            tls_certificate.password());
       }
 
-      // Load DNS SAN entries and Subject Common Name as server name patterns after certificate chain loaded,
-      // which will be used to match SNI.
+      // Load DNS SAN entries and Subject Common Name as server name patterns after certificate
+      // chain loaded, which will be used to match SNI.
       ctx.loadServerNamePatterns();
       for (auto& server_name_pattern : ctx.server_name_patterns_) {
         auto sn_result = server_names_map_->find(server_name_pattern);
         if (sn_result != server_names_map_->end()) {
           auto pt_result = sn_result->second->find(pkey_id);
           if (pt_result != sn_result->second->end()) {
-            throw EnvoyException(fmt::format("Failed to load certificate chain from {}, at most one "
-                                         "certificate of a given type may be specified for each DNS SAN entry or Subject CN",
-                                         ctx.cert_chain_file_path_));
+            throw EnvoyException(fmt::format(
+                "Failed to load certificate chain from {}, at most one "
+                "certificate of a given type may be specified for each DNS SAN entry or Subject CN",
+                ctx.cert_chain_file_path_));
           }
           sn_result->second->insert(std::pair<const int, TlsContextSharedPtr>(pkey_id, &ctx));
         } else {
@@ -1127,8 +1128,8 @@ ServerContextImpl::selectTlsContext(const SSL_CLIENT_HELLO* ssl_client_hello) {
       selected_ctx = it->second.get();
       while (it != pkey_types_map->end()) {
         if (client_ecdsa_capable == it->second->is_ecdsa_) {
-            selected_ctx = it->second.get();
-            break;
+          selected_ctx = it->second.get();
+          break;
         }
         ++it;
       }
@@ -1356,13 +1357,14 @@ void TlsContext::loadServerNamePatterns() {
   if (cert_chain_ == nullptr) {
     return;
   }
-  bssl::UniquePtr<GENERAL_NAMES> san_names(static_cast<GENERAL_NAMES*>(X509_get_ext_d2i(cert_chain_.get(), NID_subject_alt_name, nullptr, nullptr)));
+  bssl::UniquePtr<GENERAL_NAMES> san_names(static_cast<GENERAL_NAMES*>(
+      X509_get_ext_d2i(cert_chain_.get(), NID_subject_alt_name, nullptr, nullptr)));
   std::swap(san_names, san_names_);
   auto dns_sans = Utility::getSubjectAltNames(*cert_chain_, GEN_DNS);
   // https://datatracker.ietf.org/doc/html/rfc6066#section-3
   // Currently, the only server names supported are DNS hostnames, so we
   // only save dns san entries to match SNI.
-  for (const auto& san: dns_sans) {
+  for (const auto& san : dns_sans) {
     addServerNamePattern(san);
   }
 
@@ -1379,23 +1381,22 @@ void TlsContext::loadServerNamePatterns() {
       if (cn_entry) {
         ASN1_STRING* cn_asn1 = X509_NAME_ENTRY_get_data(cn_entry);
         if (cn_asn1) {
-          const auto& subject_cn = std::string(reinterpret_cast<char const*>(ASN1_STRING_data(cn_asn1)));
+          const auto& subject_cn =
+              std::string(reinterpret_cast<char const*>(ASN1_STRING_data(cn_asn1)));
           addServerNamePattern(subject_cn);
         }
       }
     }
-
   }
 }
 
 void TlsContext::addServerNamePattern(const std::string& name) {
   if (absl::StartsWith(name, "*.")) {
-      server_name_patterns_.emplace_back(name.substr(1));
+    server_name_patterns_.emplace_back(name.substr(1));
   } else {
     server_name_patterns_.emplace_back(name);
   }
 }
-
 
 } // namespace Tls
 } // namespace TransportSockets
