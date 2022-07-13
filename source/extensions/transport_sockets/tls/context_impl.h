@@ -106,12 +106,10 @@ protected:
   // Currently, at most one certificate of a given key type may be specified for each exact
   // server name or wildcard domain name.
   using PkeyTypesMap = absl::flat_hash_map<const int, TlsContextSharedPtr>;
-  using PkeyTypesMapSharedPtr = std::shared_ptr<PkeyTypesMap>;
   // Both exact server names and wildcard domains are part of the same map, in which wildcard
   // domains are prefixed with "." (i.e. ".example.com" for "*.example.com") to differentiate
   // between exact and wildcard entries.
-  using ServerNamesMap = absl::flat_hash_map<std::string, PkeyTypesMapSharedPtr>;
-  using ServerNamesMapSharedPtr = std::shared_ptr<ServerNamesMap>;
+  using ServerNamesMap = absl::flat_hash_map<std::string, PkeyTypesMap>;
 
   /**
    * The global SSL-library index used for storing a pointer to the context
@@ -133,7 +131,7 @@ protected:
   // potentially switch to a different CertificateContext based on certificate
   // selection.
   std::vector<TlsContext> tls_contexts_;
-  ServerNamesMapSharedPtr server_names_map_;
+  ServerNamesMap server_names_map_;
 
   CertValidatorPtr cert_validator_;
   Stats::Scope& scope_;

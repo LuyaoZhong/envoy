@@ -31,13 +31,6 @@ Envoy::Ssl::CertificateDetailsPtr certificateDetails(X509* cert, const std::stri
 bool dnsNameMatch(absl::string_view dns_name, absl::string_view pattern);
 
 /**
- * @param dns_name the DNS name to match
- * @param patterns the pattern vector to match against (*.example.com) and (test*.example.com) etc.
- * @return true if the dns name matches patterns
- */
-bool dnsNameMatchMuliPatterns(absl::string_view dns_name, std::vector<std::string> patterns);
-
-/**
  * Determines whether the given DNS label matches 'pattern' which may contain a wildcard. e.g.,
  * patterns "baz*" and "*baz" and "b*z" would match DNS labels "baz1" and "foobaz" and "buzz",
  * respectively.

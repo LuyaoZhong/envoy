@@ -117,7 +117,10 @@ Certificate selection
 certificates. These may be a mix of RSA and P-256 ECDSA certificates for multiple services. The following rules apply:
 
 Certificate config/loading rules:
+
 * DNS SANs or Subject Common Name is extracted as server name pattern to match SNI during handshake.
+* FQDN like "test.example.com" and wildcard like "\*.example.com" are valid at the same time, which will be loaded
+  as two different server name pattern.
 * Only one certificate of a particular type (RSA or ECDSA) may be specified for each server name pattern.
 * Non-P-256 server ECDSA certificates are rejected.
 * Static and SDS certificates may not be mixed in a given :ref:`DownstreamTlsContext
@@ -126,13 +129,15 @@ Certificate config/loading rules:
 SNI matching rules:
 
 * If the client support SNI, a certificate with proper DNS SANs or Subject Common Name should be selected
-* If no certificate is matched to SNI, the connection is refused.
-* Otherwise, particular type (RSA or ECDSA) matching will be executed after SNI matching.
-* If the client does not support SNI, skip the SNI matching.
+* It tries to match on exact server name first, then match on wildcard server name. e.g. If SNI is
+  "test.example.com", a group of certificates with "test.example.com" will become candidates if it is present,
+  otherwise it looks for ".example.com",  and ".com" at last.
+* If no certificate is matched to SNI or the client does not support SNI, subsequent particular type (RSA or ECDSA)
+  matching will be executed with all certificates as candidates.
+* Otherwise, particular type (RSA or ECDSA) matching will be executed with SNI-matched certificates as candidates.
 
 Public Key Type matching(ECDSA or RSA) rules:
 
-* Type matching is executed after SNI matching if the client support SNI.
 * If the client supports P-256 ECDSA, a P-256 ECDSA certificate is selected if it is present.
 * If the client only supports RSA, a RSA certificate is selected if it is present.
 * If no exact match, fallback to the first certificate in the candidates.

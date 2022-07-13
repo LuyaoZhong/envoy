@@ -90,16 +90,6 @@ bool Utility::labelWildcardMatch(absl::string_view dns_label, absl::string_view 
   return false;
 }
 
-bool Utility::dnsNameMatchMuliPatterns(absl::string_view dns_name,
-                                       std::vector<std::string> patterns) {
-  for (const auto& pattern : patterns) {
-    if (Utility::dnsNameMatch(dns_name, pattern)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 bool Utility::dnsNameMatch(absl::string_view dns_name, absl::string_view pattern) {
   // A-label ACE prefix https://www.rfc-editor.org/rfc/rfc5890#section-2.3.2.5.
   constexpr absl::string_view ACE_prefix = "xn--";

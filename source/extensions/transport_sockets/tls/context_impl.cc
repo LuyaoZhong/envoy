@@ -175,7 +175,7 @@ ContextImpl::ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& c
   }
 #endif
 
-  server_names_map_ = std::make_shared<ServerNamesMap>();
+  server_names_map_.clear();
   if (!capabilities_.provides_certificates) {
     for (uint32_t i = 0; i < tls_certificates.size(); ++i) {
       auto& ctx = tls_contexts_[i];
@@ -276,20 +276,20 @@ ContextImpl::ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& c
       // chain loaded, which will be used to match SNI.
       ctx.loadServerNamePatterns();
       for (auto& server_name_pattern : ctx.server_name_patterns_) {
-        auto sn_result = server_names_map_->find(server_name_pattern);
-        if (sn_result != server_names_map_->end()) {
-          auto pt_result = sn_result->second->find(pkey_id);
-          if (pt_result != sn_result->second->end()) {
+        auto sn_match = server_names_map_.find(server_name_pattern);
+        if (sn_match != server_names_map_.end()) {
+          auto pt_match = sn_match->second.find(pkey_id);
+          if (pt_match != sn_match->second.end()) {
             throw EnvoyException(fmt::format(
                 "Failed to load certificate chain from {}, at most one "
                 "certificate of a given type may be specified for each DNS SAN entry or Subject CN",
                 ctx.cert_chain_file_path_));
           }
-          sn_result->second->insert(std::pair<const int, TlsContextSharedPtr>(pkey_id, &ctx));
+          sn_match->second.emplace(std::pair<const int, TlsContextSharedPtr>(pkey_id, &ctx));
         } else {
-          PkeyTypesMapSharedPtr pkey_types_map = std::make_shared<PkeyTypesMap>();
-          pkey_types_map->insert(std::pair<const int, TlsContextSharedPtr>(pkey_id, &ctx));
-          server_names_map_->insert({server_name_pattern, pkey_types_map});
+          PkeyTypesMap pkey_types_map;
+          pkey_types_map.emplace(std::pair<const int, TlsContextSharedPtr>(pkey_id, &ctx));
+          server_names_map_.emplace(std::pair<std::string, PkeyTypesMap>{server_name_pattern, pkey_types_map});
         }
       }
     }
@@ -1103,18 +1103,18 @@ ServerContextImpl::selectTlsContext(const SSL_CLIENT_HELLO* ssl_client_hello) {
 
   // do SNI matching and pkey type matching if SNI exists
   if (!sni.empty()) {
-    PkeyTypesMapSharedPtr pkey_types_map;
+    PkeyTypesMap pkey_types_map;
     // Match on exact server name, i.e. "www.example.com" for "www.example.com".
-    const auto server_name_exact_match = server_names_map_->find(sni);
-    if (server_name_exact_match != server_names_map_->end()) {
+    const auto server_name_exact_match = server_names_map_.find(sni);
+    if (server_name_exact_match != server_names_map_.end()) {
       pkey_types_map = server_name_exact_match->second;
     } else {
       // Match on all wildcard domains, i.e. ".example.com" and ".com" for "www.example.com".
       size_t pos = sni.find('.', 1);
       while (pos < sni.size() - 1 && pos != std::string::npos) {
         const std::string wildcard = sni.substr(pos);
-        const auto server_name_wildcard_match = server_names_map_->find(wildcard);
-        if (server_name_wildcard_match != server_names_map_->end()) {
+        const auto server_name_wildcard_match = server_names_map_.find(wildcard);
+        if (server_name_wildcard_match != server_names_map_.end()) {
           pkey_types_map = server_name_wildcard_match->second;
           break;
         }
@@ -1122,11 +1122,11 @@ ServerContextImpl::selectTlsContext(const SSL_CLIENT_HELLO* ssl_client_hello) {
       }
     }
 
-    if (pkey_types_map != nullptr) {
-      auto it = pkey_types_map->begin();
+    if (!pkey_types_map.empty()) {
+      auto it = pkey_types_map.begin();
       // Fallback on first SNI-matched certificate
       selected_ctx = it->second.get();
-      while (it != pkey_types_map->end()) {
+      while (it != pkey_types_map.end()) {
         if (client_ecdsa_capable == it->second->is_ecdsa_) {
           selected_ctx = it->second.get();
           break;
@@ -1134,14 +1134,9 @@ ServerContextImpl::selectTlsContext(const SSL_CLIENT_HELLO* ssl_client_hello) {
         ++it;
       }
     }
-
-    if (selected_ctx == nullptr) {
-      // make the handshake fail if there is no ctx matched for SNI
-      return ssl_select_cert_error;
-    }
   }
-  // do pkey type matching only if SNI does Not exist
-  else {
+  // do pkey type matching if SNI does Not exist or no ctx matched for SNI
+  if (sni.empty() || selected_ctx == nullptr) {
     // Fallback on first certificate.
     selected_ctx = &tls_contexts_[0];
     for (const auto& ctx : tls_contexts_) {
