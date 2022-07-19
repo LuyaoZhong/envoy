@@ -289,7 +289,8 @@ ContextImpl::ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& c
         } else {
           PkeyTypesMap pkey_types_map;
           pkey_types_map.emplace(std::pair<const int, TlsContextSharedPtr>(pkey_id, &ctx));
-          server_names_map_.emplace(std::pair<std::string, PkeyTypesMap>{server_name_pattern, pkey_types_map});
+          server_names_map_.emplace(
+              std::pair<std::string, PkeyTypesMap>{server_name_pattern, pkey_types_map});
         }
       }
     }
