@@ -285,10 +285,10 @@ ContextImpl::ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& c
                 "certificate of a given type may be specified for each DNS SAN entry or Subject CN",
                 ctx.cert_chain_file_path_));
           }
-          sn_match->second.emplace(std::pair<const int, TlsContextSharedPtr>(pkey_id, &ctx));
+          sn_match->second.emplace(std::pair<const int, TlsContext*>(pkey_id, &ctx));
         } else {
           PkeyTypesMap pkey_types_map;
-          pkey_types_map.emplace(std::pair<const int, TlsContextSharedPtr>(pkey_id, &ctx));
+          pkey_types_map.emplace(std::pair<const int, TlsContext*>(pkey_id, &ctx));
           server_names_map_.emplace(
               std::pair<std::string, PkeyTypesMap>{server_name_pattern, pkey_types_map});
         }
@@ -1097,8 +1097,8 @@ enum ssl_select_cert_result_t
 ServerContextImpl::selectTlsContext(const SSL_CLIENT_HELLO* ssl_client_hello) {
   const bool client_ecdsa_capable = isClientEcdsaCapable(ssl_client_hello);
   const bool client_ocsp_capable = isClientOcspCapable(ssl_client_hello);
-  std::string sni =
-      std::string(SSL_get_servername(ssl_client_hello->ssl, TLSEXT_NAMETYPE_host_name));
+  absl::string_view sni = absl::NullSafeStringView(
+      SSL_get_servername(ssl_client_hello->ssl, TLSEXT_NAMETYPE_host_name));
 
   const TlsContext* selected_ctx = nullptr;
 
@@ -1113,8 +1113,9 @@ ServerContextImpl::selectTlsContext(const SSL_CLIENT_HELLO* ssl_client_hello) {
       // Match on all wildcard domains, i.e. ".example.com" and ".com" for "www.example.com".
       size_t pos = sni.find('.', 1);
       while (pos < sni.size() - 1 && pos != std::string::npos) {
-        const std::string wildcard = sni.substr(pos);
-        const auto server_name_wildcard_match = server_names_map_.find(wildcard);
+        absl::string_view wildcard = sni.substr(pos);
+        const auto server_name_wildcard_match =
+            server_names_map_.find(static_cast<std::string>(wildcard));
         if (server_name_wildcard_match != server_names_map_.end()) {
           pkey_types_map = server_name_wildcard_match->second;
           break;
@@ -1126,10 +1127,10 @@ ServerContextImpl::selectTlsContext(const SSL_CLIENT_HELLO* ssl_client_hello) {
     if (!pkey_types_map.empty()) {
       auto it = pkey_types_map.begin();
       // Fallback on first SNI-matched certificate
-      selected_ctx = it->second.get();
+      selected_ctx = it->second;
       while (it != pkey_types_map.end()) {
         if (client_ecdsa_capable == it->second->is_ecdsa_) {
-          selected_ctx = it->second.get();
+          selected_ctx = it->second;
           break;
         }
         ++it;

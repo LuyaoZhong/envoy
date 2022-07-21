@@ -65,8 +65,6 @@ struct TlsContext {
   void addServerNamePattern(const std::string& name);
 };
 
-using TlsContextSharedPtr = std::shared_ptr<TlsContext>;
-
 class ContextImpl : public virtual Envoy::Ssl::Context,
                     protected Logger::Loggable<Logger::Id::config> {
 public:
@@ -105,7 +103,7 @@ protected:
 
   // Currently, at most one certificate of a given key type may be specified for each exact
   // server name or wildcard domain name.
-  using PkeyTypesMap = absl::flat_hash_map<const int, TlsContextSharedPtr>;
+  using PkeyTypesMap = absl::flat_hash_map<const int, TlsContext*>;
   // Both exact server names and wildcard domains are part of the same map, in which wildcard
   // domains are prefixed with "." (i.e. ".example.com" for "*.example.com") to differentiate
   // between exact and wildcard entries.
