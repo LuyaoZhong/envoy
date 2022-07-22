@@ -1358,7 +1358,7 @@ void TlsContext::loadServerNamePatterns() {
       X509_get_ext_d2i(cert_chain_.get(), NID_subject_alt_name, nullptr, nullptr)));
   std::swap(san_names, san_names_);
   auto dns_sans = Utility::getSubjectAltNames(*cert_chain_, GEN_DNS);
-  // https://datatracker.ietf.org/doc/html/rfc6066#section-3
+  // https://www.rfc-editor.org/rfc/rfc6066#section-3
   // Currently, the only server names supported are DNS hostnames, so we
   // only save dns san entries to match SNI.
   for (const auto& san : dns_sans) {
