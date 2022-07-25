@@ -142,7 +142,8 @@ Public Key Type matching(ECDSA or RSA) rules:
 * If the client only supports RSA, a RSA certificate is selected if it is present.
 * If no exact match, fallback to the first certificate in the candidates.
 * The certificate that it fallbacks to might result in a failed handshake. For instance, a client only supports
-  RSA certificates and the certificate only support ECDSA.
+  RSA certificates and the certificate only support ECDSA, or a client only supports ECDSA certificate and the
+  certificate only support RSA.
 
 OCSP rules:
 
