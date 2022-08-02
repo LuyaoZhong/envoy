@@ -43,8 +43,6 @@ struct TlsContext {
   bssl::UniquePtr<SSL_CTX> ssl_ctx_;
   bssl::UniquePtr<X509> cert_chain_;
   std::string cert_chain_file_path_;
-  std::vector<std::string> server_name_patterns_;
-  bssl::UniquePtr<GENERAL_NAMES> san_names_;
   Ocsp::OcspResponseWrapperPtr ocsp_response_;
   bool is_ecdsa_{};
   bool is_must_staple_{};
@@ -61,8 +59,6 @@ struct TlsContext {
   void loadPkcs12(const std::string& data, const std::string& data_path,
                   const std::string& password);
   void checkPrivateKey(const bssl::UniquePtr<EVP_PKEY>& pkey, const std::string& key_path);
-  void loadServerNamePatterns();
-  void addServerNamePattern(const std::string& name);
 };
 
 class ContextImpl : public virtual Envoy::Ssl::Context,
@@ -123,6 +119,8 @@ protected:
 
   void incCounter(const Stats::StatName name, absl::string_view value,
                   const Stats::StatName fallback) const;
+
+  void populateServerNamesMap(TlsContext& ctx, const int pkey_id);
 
   // This is always non-empty, with the first context used for all new SSL
   // objects. For server contexts, once we have ClientHello, we

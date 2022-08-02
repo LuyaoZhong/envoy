@@ -131,14 +131,14 @@ SNI matching rules:
 * If the client support SNI, a certificate with proper DNS SANs or Subject Common Name should be selected
 * It tries to match on exact server name first, then match on wildcard server name. e.g. If SNI is
   "test.example.com", a group of certificates with "test.example.com" will become candidates if it is present,
-  otherwise it looks for ".example.com",  and ".com" at last.
+  otherwise it looks for ".example.com".
 * If no certificate is matched to SNI or the client does not support SNI, subsequent particular type (RSA or ECDSA)
   matching will be executed with all certificates as candidates.
 * Otherwise, particular type (RSA or ECDSA) matching will be executed with SNI-matched certificates as candidates.
 
 Public Key Type matching(ECDSA or RSA) rules:
 
-* If the client supports P-256 ECDSA, a P-256 ECDSA certificate is selected if it is present.
+* If the client supports P-256 ECDSA, a P-256 ECDSA certificate is selected if it is present and the OCSP check is passed.
 * If the client only supports RSA, a RSA certificate is selected if it is present.
 * If no exact match, fallback to the first certificate in the candidates.
 * The certificate that it fallbacks to might result in a failed handshake. For instance, a client only supports
