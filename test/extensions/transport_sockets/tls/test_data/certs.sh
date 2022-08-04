@@ -179,6 +179,10 @@ rm -f san_dns4_cert.cfg
 generate_rsa_key san_multiple_dns
 generate_x509_cert san_multiple_dns ca
 
+# Generate san_multiple_dns_1_cert.pem
+generate_rsa_key san_multiple_dns_1
+generate_x509_cert san_multiple_dns_1 ca
+
 # Generate san_only_dns_cert.pem.
 generate_rsa_key san_only_dns
 generate_x509_cert san_only_dns ca

@@ -31,6 +31,8 @@
 #include "test/extensions/transport_sockets/tls/test_data/san_dns4_cert_info.h"
 #include "test/extensions/transport_sockets/tls/test_data/san_dns_cert_info.h"
 #include "test/extensions/transport_sockets/tls/test_data/san_dns_ecdsa_1_cert_info.h"
+#include "test/extensions/transport_sockets/tls/test_data/san_dns_rsa_1_cert_info.h"
+#include "test/extensions/transport_sockets/tls/test_data/san_multiple_dns_cert_info.h"
 #include "test/extensions/transport_sockets/tls/test_data/san_uri_cert_info.h"
 #include "test/extensions/transport_sockets/tls/test_data/selfsigned_ecdsa_p256_cert_info.h"
 #include "test/extensions/transport_sockets/tls/test_private_key_method_provider.h"
@@ -1317,6 +1319,64 @@ TEST_P(SslSocketTest, MultiCertPreferECDSAWithSni) {
         filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_ecdsa_2_cert.pem"
       private_key:
         filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_ecdsa_2_key.pem"
+)EOF";
+
+  TestUtilOptions test_options(client_ctx_yaml, server_ctx_yaml, true, GetParam());
+  testUtil(test_options.setExpectedSni("server1.example.com"));
+}
+
+// Multiple certs with multiple SANs, wildcard does not match if an exact match is present
+TEST_P(SslSocketTest, MultiCertMultipleSANWithSni) {
+  const std::string client_ctx_yaml = absl::StrCat(R"EOF(
+    sni: "server1.example.com"
+    common_tls_context:
+      tls_params:
+        tls_minimum_protocol_version: TLSv1_2
+        tls_maximum_protocol_version: TLSv1_2
+        cipher_suites:
+        - ECDHE-ECDSA-AES128-GCM-SHA256
+        - ECDHE-RSA-AES128-GCM-SHA256
+      validation_context:
+        verify_certificate_hash: )EOF",
+                                                   TEST_SAN_DNS_RSA_1_CERT_256_HASH);
+  const std::string server_ctx_yaml = R"EOF(
+  common_tls_context:
+    tls_certificates:
+    - certificate_chain:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_rsa_1_cert.pem"
+      private_key:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_rsa_1_key.pem"
+    - certificate_chain:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_multiple_dns_cert.pem"
+      private_key:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_multiple_dns_key.pem"
+)EOF";
+
+  TestUtilOptions test_options(client_ctx_yaml, server_ctx_yaml, true, GetParam());
+  testUtil(test_options.setExpectedSni("server1.example.com"));
+}
+
+// Wildcard in SANs is matched properly, *.example.com matches server1.example.com
+TEST_P(SslSocketTest, CertWildcardSANWithSni) {
+  const std::string client_ctx_yaml = absl::StrCat(R"EOF(
+    sni: "server1.example.com"
+    common_tls_context:
+      tls_params:
+        tls_minimum_protocol_version: TLSv1_2
+        tls_maximum_protocol_version: TLSv1_2
+        cipher_suites:
+        - ECDHE-ECDSA-AES128-GCM-SHA256
+        - ECDHE-RSA-AES128-GCM-SHA256
+      validation_context:
+        verify_certificate_hash: )EOF",
+                                                   TEST_SAN_MULTIPLE_DNS_CERT_256_HASH);
+  const std::string server_ctx_yaml = R"EOF(
+  common_tls_context:
+    tls_certificates:
+    - certificate_chain:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_multiple_dns_cert.pem"
+      private_key:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_multiple_dns_key.pem"
 )EOF";
 
   TestUtilOptions test_options(client_ctx_yaml, server_ctx_yaml, true, GetParam());
