@@ -563,6 +563,29 @@ TEST_F(SslContextImplTest, AcceptableMultipleEcdsaCerts) {
   EXPECT_NO_THROW(loadConfig(server_context_config));
 }
 
+// CN is not used if SANs are present
+TEST_F(SslContextImplTest, CertSansAndCN) {
+  envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext tls_context;
+  // no_san_cn_2_cert's CN: server2.example.com
+  // san_multiple_dns_1_cert's CN: server2.example.com
+  // san_multiple_dns_1_cert's SAN: DNS.1 = *.example.com DNS.2 = server1.example.com
+  const std::string tls_context_yaml = R"EOF(
+  common_tls_context:
+    tls_certificates:
+    - certificate_chain:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/no_san_cn_2_cert.pem"
+      private_key:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/no_san_cn_2_key.pem"
+    - certificate_chain:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_multiple_dns_1_cert.pem"
+      private_key:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_multiple_dns_1_key.pem"
+  )EOF";
+  TestUtility::loadFromYaml(TestEnvironment::substitute(tls_context_yaml), tls_context);
+  ServerContextConfigImpl server_context_config(tls_context, factory_context_);
+  EXPECT_NO_THROW(loadConfig(server_context_config));
+}
+
 // Certificates with no subject CN and no SANs are rejected.
 TEST_F(SslContextImplTest, MustHaveSubjectOrSAN) {
   envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext tls_context;

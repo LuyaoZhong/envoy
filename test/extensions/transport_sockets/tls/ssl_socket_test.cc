@@ -1271,6 +1271,10 @@ TEST_P(SslSocketTest, MultiCertPreferEcdsaWithoutSni) {
   common_tls_context:
     tls_certificates:
     - certificate_chain:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/no_san_cert.pem"
+      private_key:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/no_san_key.pem"
+    - certificate_chain:
         filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/selfsigned_cert.pem"
       private_key:
         filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/selfsigned_key.pem"
@@ -1304,6 +1308,10 @@ TEST_P(SslSocketTest, MultiCertPreferECDSAWithSni) {
   common_tls_context:
     tls_certificates:
     - certificate_chain:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/no_san_cert.pem"
+      private_key:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/no_san_key.pem"
+    - certificate_chain:
         filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_rsa_1_cert.pem"
       private_key:
         filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_rsa_1_key.pem"
@@ -1321,7 +1329,7 @@ TEST_P(SslSocketTest, MultiCertPreferECDSAWithSni) {
         filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_ecdsa_2_key.pem"
 )EOF";
 
-  TestUtilOptions test_options(client_ctx_yaml, server_ctx_yaml, true, GetParam());
+  TestUtilOptions test_options(client_ctx_yaml, server_ctx_yaml, true, version_);
   testUtil(test_options.setExpectedSni("server1.example.com"));
 }
 
@@ -1343,6 +1351,10 @@ TEST_P(SslSocketTest, MultiCertMultipleSANWithSni) {
   common_tls_context:
     tls_certificates:
     - certificate_chain:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/no_san_cert.pem"
+      private_key:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/no_san_key.pem"
+    - certificate_chain:
         filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_rsa_1_cert.pem"
       private_key:
         filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_rsa_1_key.pem"
@@ -1352,7 +1364,7 @@ TEST_P(SslSocketTest, MultiCertMultipleSANWithSni) {
         filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_multiple_dns_key.pem"
 )EOF";
 
-  TestUtilOptions test_options(client_ctx_yaml, server_ctx_yaml, true, GetParam());
+  TestUtilOptions test_options(client_ctx_yaml, server_ctx_yaml, true, version_);
   testUtil(test_options.setExpectedSni("server1.example.com"));
 }
 
@@ -1374,13 +1386,49 @@ TEST_P(SslSocketTest, CertWildcardSANWithSni) {
   common_tls_context:
     tls_certificates:
     - certificate_chain:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/no_san_cert.pem"
+      private_key:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/no_san_key.pem"
+    - certificate_chain:
         filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_multiple_dns_cert.pem"
       private_key:
         filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_multiple_dns_key.pem"
 )EOF";
 
-  TestUtilOptions test_options(client_ctx_yaml, server_ctx_yaml, true, GetParam());
+  TestUtilOptions test_options(client_ctx_yaml, server_ctx_yaml, true, version_);
   testUtil(test_options.setExpectedSni("server1.example.com"));
+}
+
+// Wildcard SAN *.example.com does not matches a.server1.example.com, validate that the
+// default/first cert is used.
+TEST_P(SslSocketTest, CertWildcardSanNotMatchWithSni) {
+  const std::string client_ctx_yaml = absl::StrCat(R"EOF(
+    sni: "a.server1.example.com"
+    common_tls_context:
+      tls_params:
+        tls_minimum_protocol_version: TLSv1_2
+        tls_maximum_protocol_version: TLSv1_2
+        cipher_suites:
+        - ECDHE-ECDSA-AES128-GCM-SHA256
+        - ECDHE-RSA-AES128-GCM-SHA256
+      validation_context:
+        verify_certificate_hash: )EOF",
+                                                   TEST_NO_SAN_CERT_256_HASH);
+  const std::string server_ctx_yaml = R"EOF(
+  common_tls_context:
+    tls_certificates:
+    - certificate_chain:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/no_san_cert.pem"
+      private_key:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/no_san_key.pem"
+    - certificate_chain:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_multiple_dns_cert.pem"
+      private_key:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_multiple_dns_key.pem"
+)EOF";
+
+  TestUtilOptions test_options(client_ctx_yaml, server_ctx_yaml, true, version_);
+  testUtil(test_options.setExpectedSni("a.server1.example.com"));
 }
 
 TEST_P(SslSocketTest, GetUriWithLocalUriSan) {

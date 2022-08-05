@@ -403,8 +403,8 @@ void ContextImpl::populateServerNamesMap(TlsContext& ctx, const int pkey_id) {
       if (pt_match != sn_match->second.end()) {
         throw EnvoyException(fmt::format(
             "Failed to load certificate chain from {}, at most one "
-            "certificate of a given type may be specified for each DNS SAN entry or Subject CN",
-            ctx.cert_chain_file_path_));
+            "certificate of a given type may be specified for each DNS SAN entry or Subject CN: {}",
+            ctx.cert_chain_file_path_, sn_match->first));
       }
       sn_match->second.emplace(std::pair<const int, TlsContext*>(pkey_id, &ctx));
     } else {
