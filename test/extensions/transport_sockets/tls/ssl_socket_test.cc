@@ -1431,6 +1431,40 @@ TEST_P(SslSocketTest, CertWildcardSanNotMatchWithSni) {
   testUtil(test_options.setExpectedSni("a.server1.example.com"));
 }
 
+// EC cert is selected for a no-EC-capable client
+TEST_P(SslSocketTest, CertWithNotECCapable) {
+  const std::string client_ctx_yaml = absl::StrCat(R"EOF(
+    sni: "server1.example.com"
+    common_tls_context:
+      tls_params:
+        tls_minimum_protocol_version: TLSv1_2
+        tls_maximum_protocol_version: TLSv1_2
+        cipher_suites:
+        - ECDHE-RSA-AES128-GCM-SHA256
+      validation_context:
+        verify_certificate_hash: )EOF",
+                                                   TEST_SAN_DNS_ECDSA_1_CERT_256_HASH);
+  const std::string server_ctx_yaml = R"EOF(
+  common_tls_context:
+    tls_certificates:
+    - certificate_chain:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_rsa_2_cert.pem"
+      private_key:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_rsa_2_key.pem"
+    - certificate_chain:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_ecdsa_1_cert.pem"
+      private_key:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_ecdsa_1_key.pem"
+)EOF";
+
+  // handshake is expected to fail
+  TestUtilOptions test_options(client_ctx_yaml, server_ctx_yaml, false, version_);
+  // TODO(luyao): We might need to modify ssl socket to set proper stats for failed handshake
+  testUtil(test_options.setExpectedServerStats("")
+               .setExpectedSni("server1.example.com")
+               .setExpectedTransportFailureReasonContains("HANDSHAKE_FAILURE_ON_CLIENT_HELLO"));
+}
+
 TEST_P(SslSocketTest, GetUriWithLocalUriSan) {
   const std::string client_ctx_yaml = R"EOF(
   common_tls_context:
