@@ -32,6 +32,7 @@
 #include "test/extensions/transport_sockets/tls/test_data/san_dns_cert_info.h"
 #include "test/extensions/transport_sockets/tls/test_data/san_dns_ecdsa_1_cert_info.h"
 #include "test/extensions/transport_sockets/tls/test_data/san_dns_rsa_1_cert_info.h"
+#include "test/extensions/transport_sockets/tls/test_data/san_dns_rsa_2_cert_info.h"
 #include "test/extensions/transport_sockets/tls/test_data/san_multiple_dns_cert_info.h"
 #include "test/extensions/transport_sockets/tls/test_data/san_uri_cert_info.h"
 #include "test/extensions/transport_sockets/tls/test_data/selfsigned_ecdsa_p256_cert_info.h"
@@ -1428,6 +1429,8 @@ TEST_P(SslSocketTest, CertWildcardSanNotMatchWithSni) {
 )EOF";
 
   TestUtilOptions test_options(client_ctx_yaml, server_ctx_yaml, true, version_);
+  // The validation succeeds with default cert since Envoy does not define the criteria that
+  // how to validate cert SAN based on SNI .
   testUtil(test_options.setExpectedSni("a.server1.example.com"));
 }
 
@@ -1448,9 +1451,9 @@ TEST_P(SslSocketTest, CertWithNotECCapable) {
   common_tls_context:
     tls_certificates:
     - certificate_chain:
-        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_rsa_2_cert.pem"
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/no_san_cert.pem"
       private_key:
-        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_rsa_2_key.pem"
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/no_san_key.pem"
     - certificate_chain:
         filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_ecdsa_1_cert.pem"
       private_key:
