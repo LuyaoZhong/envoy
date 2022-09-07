@@ -129,7 +129,7 @@ Certificate config/loading rules:
 SNI matching rules:
 
 * If the client support SNI, a certificate with proper DNS SANs or Subject Common Name should be selected
-* It tries to match on exact server name first, then match on wildcard server name. e.g. If SNI is
+* It matches on exact server name first, then matches on wildcard server name if an exact name match isn't found, e.g. if SNI is
   "test.example.com", a group of certificates with "test.example.com" will become candidates if it is present,
   otherwise it looks for ".example.com".
 * If no certificate is matched to SNI or the client does not support SNI, subsequent particular type (RSA or ECDSA)
