@@ -352,7 +352,7 @@ ContextImpl::ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& c
   }
 }
 
-void ContextImpl::populateServerNamesMap(TlsContext& ctx, const int pkey_id) {
+void ContextImpl::populateServerNamesMap(TlsContext& ctx, int pkey_id) {
   std::vector<std::string> server_name_patterns;
   if (ctx.cert_chain_ == nullptr) {
     return;
