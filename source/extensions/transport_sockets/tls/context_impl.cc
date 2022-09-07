@@ -1152,7 +1152,7 @@ ServerContextImpl::selectTlsContext(const SSL_CLIENT_HELLO* ssl_client_hello) {
   const TlsContext* selected_ctx = nullptr;
   OcspStapleAction ocsp_staple_action;
 
-  // do SNI matching and pkey type matching if SNI exists
+  // Do SNI matching and pkey type matching if SNI exists.
   if (!sni.empty()) {
     PkeyTypesMap pkey_types_map;
     // Match on exact server name, i.e. "www.example.com" for "www.example.com".
