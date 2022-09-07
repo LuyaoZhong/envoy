@@ -114,7 +114,7 @@ Certificate selection
 ---------------------
 
 :ref:`DownstreamTlsContexts <envoy_v3_api_msg_extensions.transport_sockets.tls.v3.DownstreamTlsContext>` support multiple TLS
-certificates. These may be a mix of RSA and P-256 ECDSA certificates for multiple services. The following rules apply:
+certificates. These may be a mix of RSA and P-256 ECDSA certificates for multiple SANs.
 
 Certificate config/loading rules:
 
