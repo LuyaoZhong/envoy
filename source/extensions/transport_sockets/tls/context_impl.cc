@@ -1156,7 +1156,7 @@ ServerContextImpl::selectTlsContext(const SSL_CLIENT_HELLO* ssl_client_hello) {
   if (!sni.empty()) {
     PkeyTypesMap pkey_types_map;
     // Match on exact server name, i.e. "www.example.com" for "www.example.com".
-    const auto server_name_exact_match = server_names_map_.find(sni);
+    const auto server_name_it = server_names_map_.find(sni);
     if (server_name_exact_match != server_names_map_.end()) {
       pkey_types_map = server_name_exact_match->second;
     } else {
