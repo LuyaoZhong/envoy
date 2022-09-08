@@ -455,7 +455,7 @@ TEST_F(SslContextImplTest, TestNoCert) {
 }
 
 // Multiple RSA certificates with the same exact DNS SAN are rejected.
-TEST_F(SslContextImplTest, AtMostOneRsaCert1) {
+TEST_F(SslContextImplTest, AtMostOneRsaCertSameExactDNSSan) {
   envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext tls_context;
   const std::string tls_context_yaml = R"EOF(
   common_tls_context:
@@ -478,7 +478,7 @@ TEST_F(SslContextImplTest, AtMostOneRsaCert1) {
 }
 
 // Multiple RSA certificates with the same wildcard DNS SAN are rejected.
-TEST_F(SslContextImplTest, AtMostOneRsaCert2) {
+TEST_F(SslContextImplTest, AtMostOneRsaCertSameWildcardDNSSan) {
   envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext tls_context;
   const std::string tls_context_yaml = R"EOF(
   common_tls_context:

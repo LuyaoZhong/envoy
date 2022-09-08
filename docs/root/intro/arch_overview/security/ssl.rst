@@ -126,7 +126,7 @@ Certificate config/loading rules:
 * Static and SDS certificates may not be mixed in a given :ref:`DownstreamTlsContext
   <envoy_v3_api_msg_extensions.transport_sockets.tls.v3.DownstreamTlsContext>`.
 
-SNI matching rules:
+Certificate selection rules, including SNI matching, Public Key Type matching and OCSP:
 
 * If the client support SNI, a certificate with proper DNS SANs or Subject Common Name should be selected
 * It matches on exact server name first, then matches on wildcard server name if an exact name match isn't found, e.g. if SNI is
@@ -134,20 +134,15 @@ SNI matching rules:
 * If no certificate is matched to SNI or the client does not support SNI, subsequent particular type (RSA or ECDSA)
   matching will be executed with all certificates as candidates.
 * Otherwise, particular type (RSA or ECDSA) matching will be executed with SNI-matched certificates as candidates.
-
-Public Key Type matching(ECDSA or RSA) rules:
-
-* If the client supports P-256 ECDSA, a P-256 ECDSA certificate is selected if it is present and the OCSP check is passed.
-* If the client only supports RSA, a RSA certificate is selected if it is present.
+* Key type matching is based on SNI matching results
+* If the client supports P-256 ECDSA, the first P-256 ECDSA certificate is selected if it is present and the OCSP check is passed.
+* If the client only supports RSA, the first RSA certificate is selected if it is present.
 * If no exact match, fallback to the first certificate in the candidates.
 * The certificate that it fallbacks to might result in a failed handshake. For instance, a client only supports
   RSA certificates and the certificate only support ECDSA, or a client only supports ECDSA certificate and the
   certificate only support RSA.
-
-OCSP rules:
-
-* The selected certificate must adhere to the OCSP policy. If no
-  such certificate is found, the connection is refused.
+* After key type matching, one certificate is selected, and the selected certificate must adhere to the OCSP policy.
+  If no such certificate is found, the connection is refused.
 
 Only a single TLS certificate is supported today for :ref:`UpstreamTlsContexts
 <envoy_v3_api_msg_extensions.transport_sockets.tls.v3.UpstreamTlsContext>`.

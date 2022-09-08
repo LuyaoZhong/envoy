@@ -1,7 +1,6 @@
 #include "source/extensions/transport_sockets/tls/utility.h"
 
 #include <cstdint>
-#include <vector>
 
 #include "source/common/common/assert.h"
 #include "source/common/common/empty_string.h"
