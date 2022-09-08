@@ -706,10 +706,10 @@ ServerContextImpl::ServerContextImpl(Stats::Scope& scope,
 
   for (auto& ctx : tls_contexts_) {
     bssl::UniquePtr<EVP_PKEY> public_key(X509_get_pubkey(ctx.cert_chain_.get()));
-      const int pkey_id = EVP_PKEY_id(public_key.get());
-      // Load DNS SAN entries and Subject Common Name as server name patterns after certificate
-      // chain loaded, and populate ServerNamesMap which will be used to match SNI.
-      populateServerNamesMap(ctx, pkey_id);
+    const int pkey_id = EVP_PKEY_id(public_key.get());
+    // Load DNS SAN entries and Subject Common Name as server name patterns after certificate
+    // chain loaded, and populate ServerNamesMap which will be used to match SNI.
+    populateServerNamesMap(ctx, pkey_id);
   }
 
   // Compute the session context ID hash. We use all the certificate identities,
@@ -810,7 +810,7 @@ void ServerContextImpl::populateServerNamesMap(TlsContext& ctx, int pkey_id) {
     auto pt_match = sn_match->second.find(pkey_id);
     if (pt_match != sn_match->second.end()) {
       throw EnvoyException(fmt::format(
-      "Failed to load certificate chain from {}, at most one "
+          "Failed to load certificate chain from {}, at most one "
           "certificate of a given type may be specified for each DNS SAN entry or Subject CN: {}",
           ctx.cert_chain_file_path_, sn_match->first));
     }
@@ -840,8 +840,8 @@ void ServerContextImpl::populateServerNamesMap(TlsContext& ctx, int pkey_id) {
       if (cn_entry) {
         ASN1_STRING* cn_asn1 = X509_NAME_ENTRY_get_data(cn_entry);
         if (cn_asn1) {
-          const auto& subject_cn =
-              std::string(reinterpret_cast<char const*>(ASN1_STRING_data(cn_asn1), ASN1_STRING_length(cn_asn1)));
+          const auto& subject_cn = std::string(reinterpret_cast<char const*>(
+              ASN1_STRING_data(cn_asn1), ASN1_STRING_length(cn_asn1)));
           populate(subject_cn);
         }
       }
