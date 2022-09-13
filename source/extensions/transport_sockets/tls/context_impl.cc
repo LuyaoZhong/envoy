@@ -805,7 +805,6 @@ void ServerContextImpl::populateServerNamesMap(TlsContext& ctx, int pkey_id) {
       sn_pattern = sn.substr(1);
     }
     PkeyTypesMap pkey_types_map;
-    server_names_map_.try_emplace(sn_pattern, pkey_types_map);
     auto sn_match = server_names_map_.try_emplace(sn_pattern, pkey_types_map).first;
     auto pt_match = sn_match->second.find(pkey_id);
     if (pt_match != sn_match->second.end()) {
@@ -839,9 +838,10 @@ void ServerContextImpl::populateServerNamesMap(TlsContext& ctx, int pkey_id) {
       X509_NAME_ENTRY* cn_entry = X509_NAME_get_entry(cert_subject, cn_index);
       if (cn_entry) {
         ASN1_STRING* cn_asn1 = X509_NAME_ENTRY_get_data(cn_entry);
-        if (cn_asn1) {
-          const auto& subject_cn = std::string(reinterpret_cast<char const*>(
-              ASN1_STRING_data(cn_asn1), ASN1_STRING_length(cn_asn1)));
+        if (ASN1_STRING_length(cn_asn1) > 0) {
+          std::string subject_cn;
+          subject_cn.assign(reinterpret_cast<char const*>(ASN1_STRING_data(cn_asn1)),
+                            ASN1_STRING_length(cn_asn1));
           populate(subject_cn);
         }
       }
