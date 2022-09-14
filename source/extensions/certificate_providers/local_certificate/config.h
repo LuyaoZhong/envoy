@@ -15,11 +15,13 @@ namespace LocalCertificate {
  */
 class LocalCertificateFactory : public CertificateProvider::CertificateProviderFactory {
 public:
-  std::string name() const override { return "envoy.certificate_providers.local_certificate"; }
+  std::string name() const override { return "envoy.certificate_providers.local_certificate"; };
   CertificateProvider::CertificateProviderSharedPtr createCertificateProviderInstance(
       const envoy::config::core::v3::TypedExtensionConfig& config,
       Server::Configuration::TransportSocketFactoryContext& factory_context,
       Api::Api& api) override;
+
+  ProtobufTypes::MessagePtr createEmptyConfigProto() override;
 };
 } // namespace LocalCertificate
 } // namespace CertificateProviders
