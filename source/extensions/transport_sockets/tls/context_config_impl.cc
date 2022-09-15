@@ -234,9 +234,9 @@ ContextConfigImpl::ContextConfigImpl(
       }
     }
   } else if (tls_certificates_hybrid_provider_ != nullptr) {
-    for (auto& tls_certificate :
+    for (auto tls_certificate :
          tls_certificates_hybrid_provider_->tlsCertificates(tls_certificate_name_)) {
-      tls_certificate_configs_.emplace_back(*tls_certificate, factory_context, api_);
+      tls_certificate_configs_.emplace_back(tls_certificate.get(), factory_context, api_);
     }
   }
 
@@ -323,7 +323,7 @@ void ContextConfigImpl::setSecretUpdateCallback(std::function<void()> callback) 
           tls_certificate_configs_.clear();
           for (auto& tls_certificate :
                tls_certificates_hybrid_provider_->tlsCertificates(tls_certificate_name_)) {
-            tls_certificate_configs_.emplace_back(*tls_certificate, factory_context_, api_);
+            tls_certificate_configs_.emplace_back(tls_certificate.get(), factory_context_, api_);
           }
           callback();
         }));
@@ -440,7 +440,8 @@ ServerContextConfigImpl::ServerContextConfigImpl(
 
   if (!capabilities().provides_certificates) {
     if ((config.common_tls_context().tls_certificates().size() +
-         config.common_tls_context().tls_certificate_sds_secret_configs().size()) == 0) {
+         config.common_tls_context().tls_certificate_sds_secret_configs().size()) +
+         config.common_tls_context().has_tls_certificate_provider_instance() == 0) {
       throw EnvoyException("No TLS certificates found for server context");
     } else if (!config.common_tls_context().tls_certificates().empty() &&
                !config.common_tls_context().tls_certificate_sds_secret_configs().empty()) {

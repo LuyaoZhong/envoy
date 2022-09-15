@@ -20,6 +20,17 @@ Provider::Provider(const envoy::config::core::v3::TypedExtensionConfig& config,
                                          ProtobufMessage::getStrictValidationVisitor(), message);
   ca_cert_ = Config::DataSource::read(message.rootca_cert(), true, api);
   ca_key_ = Config::DataSource::read(message.rootca_key(), true, api);
+  default_identity_cert_ = Config::DataSource::read(message.default_identity_cert(), true, api);
+  default_identity_key_ = Config::DataSource::read(message.default_identity_key(), true, api);
+  // Generate TLSCertificate
+  envoy::extensions::transport_sockets::tls::v3::TlsCertificate* tls_certificate = new envoy::extensions::transport_sockets::tls::v3::TlsCertificate();
+  tls_certificate->mutable_certificate_chain()->set_inline_string(default_identity_cert_);
+  tls_certificate->mutable_private_key()->set_inline_string(default_identity_key_);
+  // Update certificates_ map
+  {
+    absl::WriterMutexLock writer_lock{&certificates_lock_};
+    certificates_.try_emplace("default", tls_certificate);
+  }
 }
 
 Envoy::CertificateProvider::CertificateProvider::Capabilities Provider::capabilities() const {
@@ -30,12 +41,12 @@ Envoy::CertificateProvider::CertificateProvider::Capabilities Provider::capabili
 
 const std::string Provider::trustedCA(const std::string&) const { return ""; }
 
-std::vector<const envoy::extensions::transport_sockets::tls::v3::TlsCertificate*>
+std::vector<std::reference_wrapper<const envoy::extensions::transport_sockets::tls::v3::TlsCertificate>>
 Provider::tlsCertificates(const std::string&) const {
-  std::vector<const envoy::extensions::transport_sockets::tls::v3::TlsCertificate*> result;
+  std::vector<std::reference_wrapper<const envoy::extensions::transport_sockets::tls::v3::TlsCertificate>> result;
   absl::ReaderMutexLock reader_lock{&certificates_lock_};
-  for (auto& [_, value] : certificates_) {
-    result.push_back(value);
+  for (auto [_, value] : certificates_) {
+    result.push_back(*value);
   }
   return result;
 }
@@ -148,8 +159,7 @@ void Provider::signCertificate(::Envoy::CertificateProvider::OnDemandUpdateMetad
   std::string key_pem(reinterpret_cast<const char*>(output), length);
 
   // Generate TLSCertificate
-  auto tls_certificate =
-      std::make_unique<envoy::extensions::transport_sockets::tls::v3::TlsCertificate>();
+  envoy::extensions::transport_sockets::tls::v3::TlsCertificate* tls_certificate = new envoy::extensions::transport_sockets::tls::v3::TlsCertificate();
   tls_certificate->mutable_certificate_chain()->set_inline_string(cert_pem);
   tls_certificate->mutable_private_key()->set_inline_string(key_pem);
 
@@ -157,9 +167,7 @@ void Provider::signCertificate(::Envoy::CertificateProvider::OnDemandUpdateMetad
   {
     absl::WriterMutexLock writer_lock{&certificates_lock_};
     certificates_.try_emplace(
-        metadata->connectionInfo()->sni(),
-        const_cast<envoy::extensions::transport_sockets::tls::v3::TlsCertificate*>(
-            tls_certificate.get()));
+        metadata->connectionInfo()->sni(), tls_certificate);
   }
 
   runAddUpdateCallback();

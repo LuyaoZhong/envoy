@@ -20,4 +20,9 @@ message LocalCertificate {
   config.core.v3.DataSource rootca_cert = 1;
 
   config.core.v3.DataSource rootca_key = 2;
+
+  // Default Identity key and cert used for TLS handshake
+  config.core.v3.DataSource default_identity_cert = 3;
+
+  config.core.v3.DataSource default_identity_key = 4;
 }

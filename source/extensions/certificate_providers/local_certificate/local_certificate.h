@@ -23,7 +23,7 @@ public:
   // CertificateProvider::CertificateProvider
   Envoy::CertificateProvider::CertificateProvider::Capabilities capabilities() const override;
   const std::string trustedCA(const std::string& cert_name) const override;
-  std::vector<const envoy::extensions::transport_sockets::tls::v3::TlsCertificate*>
+  std::vector<std::reference_wrapper<const envoy::extensions::transport_sockets::tls::v3::TlsCertificate>>
   tlsCertificates(const std::string& cert_name) const override;
   ::Envoy::CertificateProvider::OnDemandUpdateResult addOnDemandUpdateCallback(
       const std::string& cert_name,
@@ -58,6 +58,8 @@ private:
   Event::Dispatcher& main_thread_dispatcher_;
   std::string ca_cert_;
   std::string ca_key_;
+  std::string default_identity_cert_;
+  std::string default_identity_key_;
 
   Common::CallbackManager<> update_callback_manager_;
   absl::flat_hash_map<std::string, std::list<OnDemandUpdateHandleImpl*>>
