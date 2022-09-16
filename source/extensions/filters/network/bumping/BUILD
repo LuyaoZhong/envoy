@@ -48,6 +48,7 @@ envoy_cc_library(
         "//source/common/network:application_protocol_lib",
         "//source/common/network:cidr_range_lib",
         "//source/common/network:filter_lib",
+        "//source/common/network:connection_impl",
         "//source/common/network:proxy_protocol_filter_state_lib",
         "//source/common/network:socket_option_factory_lib",
         "//source/common/network:transport_socket_options_lib",

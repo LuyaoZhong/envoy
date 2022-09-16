@@ -24,6 +24,7 @@
 #include "source/common/config/utility.h"
 #include "source/common/config/well_known_names.h"
 #include "source/common/network/application_protocol.h"
+#include "source/common/network/connection_impl.h"
 #include "source/common/network/proxy_protocol_filter_state.h"
 #include "source/common/network/socket_option_factory.h"
 #include "source/common/network/transport_socket_options_impl.h"
@@ -303,7 +304,6 @@ void Filter::disableIdleTimer() {
 
 void Filter::onCacheHit(const std::string&) const {
   // Re-enable downstream reads and writes
-  // so we have a place to send downstream data to.
   read_callbacks_->connection().readDisable(false);
   read_callbacks_->connection().write_disable = false;
 
@@ -311,6 +311,13 @@ void Filter::onCacheHit(const std::string&) const {
 }
 
 void Filter::onCacheMiss(const std::string&) const {
+  // Recreate transport socket to use newly generate certificate
+  try{
+    dynamic_cast<Envoy::Network::ServerConnectionImpl&>(read_callbacks_->connection()).refreshTransportSocket();
+  }
+  catch(std::bad_cast exp) {
+    ENVOY_CONN_LOG(warn, "connection cast failed in bumping filter", read_callbacks_->connection());
+  }
   // Re-enable downstream reads and writes
   read_callbacks_->connection().readDisable(false);
   read_callbacks_->connection().write_disable = false;
