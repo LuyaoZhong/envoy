@@ -232,7 +232,7 @@ void Filter::onGenericPoolReady(StreamInfo::StreamInfo*,
 
 void Filter::requestCertificate(Ssl::ConnectionInfoConstSharedPtr info) {
   config_->main_dispatcher_.post([this, info]() {
-    config_->tls_certificate_provider_->addOnDemandUpdateCallback(
+    this->on_demand_handle_ = config_->tls_certificate_provider_->addOnDemandUpdateCallback(
         config_->tls_certificate_name_, std::make_shared<BumpingMetadata>(info),
         read_callbacks_->connection().dispatcher(), *this);
   });

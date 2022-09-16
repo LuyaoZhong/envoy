@@ -51,28 +51,38 @@ Provider::tlsCertificates(const std::string&) const {
   return result;
 }
 
-::Envoy::CertificateProvider::OnDemandUpdateResult Provider::addOnDemandUpdateCallback(
+Envoy::CertificateProvider::OnDemandUpdateHandlePtr Provider::addOnDemandUpdateCallback(
     const std::string&, ::Envoy::CertificateProvider::OnDemandUpdateMetadataPtr metadata,
     Event::Dispatcher& thread_local_dispatcher,
-    ::Envoy::CertificateProvider::OnDemandUpdateCallbacks& callback) {
+    Envoy::CertificateProvider::OnDemandUpdateCallbacks& callback) {
+
+  // TODO: it seems that worker thread destroyed the objects in connectionInfo during
+  // the process of this function running, we might need to copy the value instead of
+  // passing the metadata pointer
+  std::string sni = metadata->connectionInfo()->sni();
 
   auto handle = std::make_unique<OnDemandUpdateHandleImpl>(
-      on_demand_update_callbacks_, metadata->connectionInfo()->sni(), callback);
+      on_demand_update_callbacks_, sni, callback);
+
+  // TODO: we need to improve this cache_hit check
+  // It is possible that two SNIs use the same cert, so they share the same SANs.
+  // if we generate two mimic certs for these SNIs, it can not pass the certs config check
+  // since we do not allow duplicated SANs.
+  // We need to align this cache_hit with current transport socket behavior
   bool cache_hit = [&]() {
     absl::ReaderMutexLock reader_lock{&certificates_lock_};
-    auto it = certificates_.find(metadata->connectionInfo()->sni());
+    auto it = certificates_.find(sni);
     return it != certificates_.end() ? true : false;
   }();
 
   if (cache_hit) {
     // Cache hit, run on-demand update callback directly
-    runOnDemandUpdateCallback(metadata->connectionInfo()->sni(), thread_local_dispatcher, true);
-    return {::Envoy::CertificateProvider::OnDemandUpdateStatus::InCache, std::move(handle)};
+    runOnDemandUpdateCallback(sni, thread_local_dispatcher, true);
   } else {
     // Cache miss, generate self-signed cert
-    main_thread_dispatcher_.post([&] { signCertificate(metadata, thread_local_dispatcher); });
-    return {::Envoy::CertificateProvider::OnDemandUpdateStatus::Loading, std::move(handle)};
+    main_thread_dispatcher_.post([&] { signCertificate(sni, thread_local_dispatcher); });
   }
+  return handle;
 }
 
 Common::CallbackHandlePtr Provider::addUpdateCallback(const std::string&,
@@ -100,7 +110,9 @@ void Provider::runOnDemandUpdateCallback(const std::string& host,
   }
 }
 
-void Provider::signCertificate(::Envoy::CertificateProvider::OnDemandUpdateMetadataPtr metadata,
+// TODO: we meed to copy more information of original cert, such as SANs, the whole subject,
+// expiration time, etc.
+void Provider::signCertificate(std::string sni,
                                Event::Dispatcher& thread_local_dispatcher) {
   bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(const_cast<char*>(ca_cert_.data()), ca_cert_.size()));
   RELEASE_ASSERT(bio != nullptr, "");
@@ -124,9 +136,13 @@ void Provider::signCertificate(::Envoy::CertificateProvider::OnDemandUpdateMetad
   X509_REQ_set_version(req, 0);
 
   X509_NAME* x509_name = X509_REQ_get_subject_name(req);
-  const char* szCommon = metadata->connectionInfo()->sni().data();
-  X509_NAME_add_entry_by_txt(x509_name, "CN", MBSTRING_ASC,
-                             reinterpret_cast<const unsigned char*>(szCommon), -1, -1, 0);
+  const char* szCommon = sni.data();
+  //X509_NAME_add_entry_by_txt(x509_name, "CN", MBSTRING_ASC,
+  //                           reinterpret_cast<const unsigned char*>(szCommon), -1, -1, 0);
+  // reference: https://github.com/openssl/openssl/blob/master/test/v3nametest.c
+  X509_NAME_add_entry_by_NID(x509_name, NID_commonName, MBSTRING_ASC,
+                       reinterpret_cast<const unsigned char*>(szCommon), -1, -1, 0);
+  X509_set_subject_name(crt, x509_name);
 
   EVP_PKEY_assign_RSA(key, rsa);
   X509_REQ_set_pubkey(req, key);
@@ -134,10 +150,18 @@ void Provider::signCertificate(::Envoy::CertificateProvider::OnDemandUpdateMetad
 
   X509_set_version(crt, 2);
   std::string prefix = "DNS:";
-  std::string subAltName = prefix + metadata->connectionInfo()->sni().data();
-  X509_EXTENSION* ext =
-      X509V3_EXT_nconf_nid(nullptr, nullptr, NID_subject_alt_name, subAltName.c_str());
-  X509_add_ext(crt, ext, -1);
+  std::string subAltName = prefix + sni;
+  auto gens = sk_GENERAL_NAME_new_null();
+  auto ia5 = ASN1_IA5STRING_new();
+  ASN1_STRING_set(ia5, subAltName.c_str(), -1);
+  auto gen = GENERAL_NAME_new();
+  GENERAL_NAME_set0_value(gen, GEN_DNS, ia5);
+  sk_GENERAL_NAME_push(gens, gen);
+  X509_add1_ext_i2d(crt, NID_subject_alt_name, gens, 0, 0);
+  //X509_EXTENSION* ext =
+  //    X509V3_EXT_nconf_nid(nullptr, nullptr, NID_subject_alt_name, subAltName.c_str());
+  //X509_add_ext(crt, ext, -1);
+
   X509_set_issuer_name(crt, X509_get_subject_name(ca_cert.get()));
   X509_gmtime_adj(X509_get_notBefore(crt), 0);
   X509_gmtime_adj(X509_get_notAfter(crt), 2 * 365 * 24 * 3600);
@@ -167,11 +191,11 @@ void Provider::signCertificate(::Envoy::CertificateProvider::OnDemandUpdateMetad
   {
     absl::WriterMutexLock writer_lock{&certificates_lock_};
     certificates_.try_emplace(
-        metadata->connectionInfo()->sni(), tls_certificate);
+        sni, tls_certificate);
   }
 
   runAddUpdateCallback();
-  runOnDemandUpdateCallback(metadata->connectionInfo()->sni(), thread_local_dispatcher, false);
+  runOnDemandUpdateCallback(sni, thread_local_dispatcher, false);
 }
 
 } // namespace LocalCertificate

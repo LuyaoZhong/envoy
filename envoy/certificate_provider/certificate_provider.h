@@ -40,25 +40,12 @@ public:
   virtual void onCacheMiss(const std::string& host) const PURE;
 };
 
-enum class OnDemandUpdateStatus {
-  // The cert is in cache. No self-signing needed.
-  InCache,
-  // The cert is not in cache. Self-sign cert, callbacks will be called at a later time unless
-  // cancelled.
-  Loading,
-};
-
 class OnDemandUpdateHandle {
 public:
   virtual ~OnDemandUpdateHandle() = default;
 };
 
 using OnDemandUpdateHandlePtr = std::unique_ptr<OnDemandUpdateHandle>;
-
-struct OnDemandUpdateResult {
-  OnDemandUpdateStatus status_;
-  OnDemandUpdateHandlePtr handle_;
-};
 
 class CertificateProvider {
 public:
@@ -92,9 +79,9 @@ public:
    * @param metadata is passed to provider for certs fetching/refreshing.
    * @param thread_local_dispatcher is the dispatcher from callee's thread.
    * @param callback registers callback to be executed for on demand update.
-   * @return CallbackHandle the handle which can remove that update callback.
+   * @return OnDemandUpdateHandle the handle which can remove that update callback.
    */
-  virtual OnDemandUpdateResult addOnDemandUpdateCallback(
+  virtual OnDemandUpdateHandlePtr addOnDemandUpdateCallback(
       const std::string& cert_name, Envoy::CertificateProvider::OnDemandUpdateMetadataPtr metadata,
       Event::Dispatcher& thread_local_dispatcher, OnDemandUpdateCallbacks& callback) PURE;
 

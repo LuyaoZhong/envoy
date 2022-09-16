@@ -124,18 +124,12 @@ class BumpingMetadata : public CertificateProvider::OnDemandUpdateMetadata {
 public:
   BumpingMetadata(Envoy::Ssl::ConnectionInfoConstSharedPtr info) : info_(info){};
 
-  Envoy::Ssl::ConnectionInfoConstSharedPtr connectionInfo() const { return info_; }
+  Envoy::Ssl::ConnectionInfoConstSharedPtr connectionInfo() const override { return info_; }
 
 private:
   Envoy::Ssl::ConnectionInfoConstSharedPtr info_;
 };
 
-class OnDemandUpdateMetadata {
-public:
-  virtual ~OnDemandUpdateMetadata() = default;
-
-  virtual Envoy::Ssl::ConnectionInfoConstSharedPtr connectionInfo() const PURE;
-};
 /**
  * An implementation of a Bumping filter. This filter will instantiate a new outgoing TCP
  * connection using TCP connection pool for the configured cluster. The established connection
@@ -242,6 +236,7 @@ protected:
   Network::Socket::OptionsSharedPtr upstream_options_;
   uint32_t connect_attempts_{};
   bool connecting_{};
+  Envoy::CertificateProvider::OnDemandUpdateHandlePtr on_demand_handle_;
 };
 } // namespace Bumping
 } // namespace Envoy
