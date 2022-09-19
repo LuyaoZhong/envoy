@@ -2,6 +2,7 @@
 
 #include "envoy/extensions/certificate_providers/local_certificate/v3/local_certificate.pb.h"
 
+#include "source/common/common/logger.h"
 #include "source/common/config/datasource.h"
 #include "source/common/config/utility.h"
 #include "source/common/protobuf/message_validator_impl.h"
@@ -52,14 +53,9 @@ Provider::tlsCertificates(const std::string&) const {
 }
 
 Envoy::CertificateProvider::OnDemandUpdateHandlePtr Provider::addOnDemandUpdateCallback(
-    const std::string&, ::Envoy::CertificateProvider::OnDemandUpdateMetadataPtr metadata,
+    const std::string sni, ::Envoy::CertificateProvider::OnDemandUpdateMetadataPtr metadata,
     Event::Dispatcher& thread_local_dispatcher,
     Envoy::CertificateProvider::OnDemandUpdateCallbacks& callback) {
-
-  // TODO: it seems that worker thread destroyed the objects in connectionInfo during
-  // the process of this function running, we might need to copy the value instead of
-  // passing the metadata pointer
-  std::string sni = metadata->connectionInfo()->sni();
 
   auto handle = std::make_unique<OnDemandUpdateHandleImpl>(
       on_demand_update_callbacks_, sni, callback);
@@ -80,7 +76,8 @@ Envoy::CertificateProvider::OnDemandUpdateHandlePtr Provider::addOnDemandUpdateC
     runOnDemandUpdateCallback(sni, thread_local_dispatcher, true);
   } else {
     // Cache miss, generate self-signed cert
-    main_thread_dispatcher_.post([&] { signCertificate(sni, thread_local_dispatcher); });
+    main_thread_dispatcher_.post([sni, metadata, &thread_local_dispatcher, this] {
+      signCertificate(sni, metadata, thread_local_dispatcher); });
   }
   return handle;
 }
@@ -112,7 +109,8 @@ void Provider::runOnDemandUpdateCallback(const std::string& host,
 
 // TODO: we meed to copy more information of original cert, such as SANs, the whole subject,
 // expiration time, etc.
-void Provider::signCertificate(std::string sni,
+void Provider::signCertificate(const std::string sni,
+                               ::Envoy::CertificateProvider::OnDemandUpdateMetadataPtr metadata,
                                Event::Dispatcher& thread_local_dispatcher) {
   bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(const_cast<char*>(ca_cert_.data()), ca_cert_.size()));
   RELEASE_ASSERT(bio != nullptr, "");
@@ -136,12 +134,7 @@ void Provider::signCertificate(std::string sni,
   X509_REQ_set_version(req, 0);
 
   X509_NAME* x509_name = X509_REQ_get_subject_name(req);
-  const char* szCommon = sni.data();
-  //X509_NAME_add_entry_by_txt(x509_name, "CN", MBSTRING_ASC,
-  //                           reinterpret_cast<const unsigned char*>(szCommon), -1, -1, 0);
-  // reference: https://github.com/openssl/openssl/blob/master/test/v3nametest.c
-  X509_NAME_add_entry_by_NID(x509_name, NID_commonName, MBSTRING_ASC,
-                       reinterpret_cast<const unsigned char*>(szCommon), -1, -1, 0);
+  setSubject(metadata->connectionInfo()->subjectPeerCertificate().data(), x509_name);
   X509_set_subject_name(crt, x509_name);
 
   EVP_PKEY_assign_RSA(key, rsa);
@@ -149,14 +142,24 @@ void Provider::signCertificate(std::string sni,
   X509_REQ_sign(req, key, EVP_sha1()); // return x509_req->signature->length
 
   X509_set_version(crt, 2);
-  std::string prefix = "DNS:";
-  std::string subAltName = prefix + sni;
   auto gens = sk_GENERAL_NAME_new_null();
-  auto ia5 = ASN1_IA5STRING_new();
-  ASN1_STRING_set(ia5, subAltName.c_str(), -1);
-  auto gen = GENERAL_NAME_new();
-  GENERAL_NAME_set0_value(gen, GEN_DNS, ia5);
-  sk_GENERAL_NAME_push(gens, gen);
+
+  for (auto& dns : metadata->connectionInfo()->dnsSansPeerCertificate()) {
+    auto ia5 = ASN1_IA5STRING_new();
+    ASN1_STRING_set(ia5, dns.c_str(), -1);
+    auto gen = GENERAL_NAME_new();
+    GENERAL_NAME_set0_value(gen, GEN_DNS, ia5);
+    sk_GENERAL_NAME_push(gens, gen);
+  }
+
+  for (auto& uri : metadata->connectionInfo()->uriSanPeerCertificate()) {
+    auto ia5 = ASN1_IA5STRING_new();
+    ASN1_STRING_set(ia5, uri.c_str(), -1);
+    auto gen = GENERAL_NAME_new();
+    GENERAL_NAME_set0_value(gen, GEN_URI, ia5);
+    sk_GENERAL_NAME_push(gens, gen);
+  }
+
   X509_add1_ext_i2d(crt, NID_subject_alt_name, gens, 0, 0);
   //X509_EXTENSION* ext =
   //    X509V3_EXT_nconf_nid(nullptr, nullptr, NID_subject_alt_name, subAltName.c_str());
@@ -198,6 +201,28 @@ void Provider::signCertificate(std::string sni,
   runOnDemandUpdateCallback(sni, thread_local_dispatcher, false);
 }
 
+void Provider::setSubject(const std::string& subject, X509_NAME* x509_name) {
+  const std::string delim = ", ";
+  std::string item;
+  size_t start = 0, end = subject.find(delim), pos = 0;
+  for ( ; end != std::string::npos; start = end + 2, end = subject.find(delim, start)) {
+    item = subject.substr(start, end - start);
+    if ((pos = item.find("=")) != std::string::npos) {
+      //X509_NAME_add_entry_by_txt(x509_name, "CN", MBSTRING_ASC,
+      //                           reinterpret_cast<const unsigned char*>(szCommon), -1, -1, 0);
+      // reference: https://github.com/openssl/openssl/blob/master/test/v3nametest.c
+      X509_NAME_add_entry_by_txt(x509_name, item.substr(0, pos).c_str(), MBSTRING_ASC,
+                                 reinterpret_cast<const unsigned char*>(item.substr(pos + 1).c_str()),
+                                 -1, -1, 0);
+    }
+  }
+  item = subject.substr(start, subject.length() - start);
+  if ((pos = item.find("=")) != std::string::npos) {
+    X509_NAME_add_entry_by_txt(x509_name, item.substr(0, pos).c_str(), MBSTRING_ASC,
+                               reinterpret_cast<const unsigned char*>(item.substr(pos + 1).c_str()),
+                               -1, -1, 0);
+  }
+}
 } // namespace LocalCertificate
 } // namespace CertificateProviders
 } // namespace Extensions

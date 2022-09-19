@@ -860,6 +860,9 @@ void ServerConnectionImpl::refreshTransportSocket() {
   auto transport_socket = transport_socket_factory_.createDownstreamTransportSocket();
   std::swap(transport_socket, transport_socket_);
   transport_socket_->setTransportSocketCallbacks(*this);
+  // Currently setSslConnection doesn't allow swapping connectioninfo if old connection info exists
+  // Revisit this when related issues are discovered.
+  //socket_->connectionInfoProvider().setSslConnection(transport_socket_->ssl());
 }
 
 ClientConnectionImpl::ClientConnectionImpl(

@@ -167,8 +167,8 @@ public:
   }
 
   // CertificateProvider::OnDemandUpdateCallbacks
-  void onCacheHit(const std::string& host) const override;
-  void onCacheMiss(const std::string& host) const override;
+  void onCacheHit(const std::string host) const override;
+  void onCacheMiss(const std::string host) const override;
 
   void requestCertificate(Ssl::ConnectionInfoConstSharedPtr info);
 

@@ -199,6 +199,7 @@ void Filter::onGenericPoolFailure(ConnectionPool::PoolFailureReason reason,
                                   Upstream::HostDescriptionConstSharedPtr host) {
   generic_conn_pool_.reset();
   read_callbacks_->upstreamHost(host);
+  //TODO fix potential segmentation fault issue here
   getStreamInfo().upstreamInfo()->setUpstreamHost(host);
   getStreamInfo().upstreamInfo()->setUpstreamTransportFailureReason(failure_reason);
 
@@ -222,18 +223,19 @@ void Filter::onGenericPoolReady(StreamInfo::StreamInfo*,
                                 const Network::Address::InstanceConstSharedPtr&,
                                 Ssl::ConnectionInfoConstSharedPtr info) {
 
-  // Cert mimick
+  // Request mimick cert from local certificate provider.
   requestCertificate(info);
   upstream_ = std::move(upstream);
   generic_conn_pool_.reset();
   onUpstreamConnection();
-  // read_callbacks_->continueReading();
 }
 
 void Filter::requestCertificate(Ssl::ConnectionInfoConstSharedPtr info) {
+  ENVOY_CONN_LOG(info, "sni: {}", read_callbacks_->connection(), read_callbacks_->connection().requestedServerName());
   config_->main_dispatcher_.post([this, info]() {
     this->on_demand_handle_ = config_->tls_certificate_provider_->addOnDemandUpdateCallback(
-        config_->tls_certificate_name_, std::make_shared<BumpingMetadata>(info),
+        std::string(read_callbacks_->connection().requestedServerName()),
+        std::make_shared<BumpingMetadata>(info),
         read_callbacks_->connection().dispatcher(), *this);
   });
 }
@@ -302,7 +304,7 @@ void Filter::disableIdleTimer() {
   }
 }
 
-void Filter::onCacheHit(const std::string&) const {
+void Filter::onCacheHit(const std::string) const {
   // Re-enable downstream reads and writes
   read_callbacks_->connection().readDisable(false);
   read_callbacks_->connection().write_disable = false;
@@ -310,7 +312,7 @@ void Filter::onCacheHit(const std::string&) const {
   read_callbacks_->continueReading();
 }
 
-void Filter::onCacheMiss(const std::string&) const {
+void Filter::onCacheMiss(const std::string) const {
   // Recreate transport socket to use newly generate certificate
   try{
     dynamic_cast<Envoy::Network::ServerConnectionImpl&>(read_callbacks_->connection()).refreshTransportSocket();

@@ -26,7 +26,7 @@ public:
   std::vector<std::reference_wrapper<const envoy::extensions::transport_sockets::tls::v3::TlsCertificate>>
   tlsCertificates(const std::string& cert_name) const override;
   Envoy::CertificateProvider::OnDemandUpdateHandlePtr addOnDemandUpdateCallback(
-      const std::string& cert_name,
+      const std::string cert_name,
       Envoy::CertificateProvider::OnDemandUpdateMetadataPtr metadata,
       Event::Dispatcher& thread_local_dispatcher,
       ::Envoy::CertificateProvider::OnDemandUpdateCallbacks& callback) override;
@@ -55,7 +55,10 @@ private:
                                  Event::Dispatcher& thread_local_dispatcher, bool in_cache = true);
   //void signCertificate(std::string sni, absl::Span<const std::string> dns_sans, const std::string subject,
   //                     Event::Dispatcher& thread_local_dispatcher);
-  void signCertificate(std::string sni, Event::Dispatcher& thread_local_dispatcher);
+  void signCertificate(const std::string sni,
+                       Envoy::CertificateProvider::OnDemandUpdateMetadataPtr metadata,
+                       Event::Dispatcher& thread_local_dispatcher);
+  void setSubject(const std::string& subject, X509_NAME* x509_name);
   Event::Dispatcher& main_thread_dispatcher_;
   std::string ca_cert_;
   std::string ca_key_;

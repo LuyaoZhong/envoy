@@ -19,7 +19,7 @@ envoy_cc_library(
         "//envoy/event:dispatcher_interface",
         "//envoy/server:transport_socket_config_interface",
         "//source/common/common:callback_impl_lib",
-        "//source/common/common:minimal_logger_lib",
+        "//source/common/common:logger_lib",
         "//source/common/common:utility_lib",
         "//source/common/config:datasource_lib",
         "//source/common/protobuf:message_validator_lib",
