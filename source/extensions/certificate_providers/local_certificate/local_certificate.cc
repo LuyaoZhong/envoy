@@ -23,6 +23,8 @@ Provider::Provider(const envoy::config::core::v3::TypedExtensionConfig& config,
   ca_key_ = Config::DataSource::read(message.rootca_key(), true, api);
   default_identity_cert_ = Config::DataSource::read(message.default_identity_cert(), true, api);
   default_identity_key_ = Config::DataSource::read(message.default_identity_key(), true, api);
+  // Set default valid time to 30 days
+  valid_seconds_ = PROTOBUF_GET_WRAPPED_OR_DEFAULT(message, valid_seconds, 3600 * 24 * 30);
   // Generate TLSCertificate
   envoy::extensions::transport_sockets::tls::v3::TlsCertificate* tls_certificate = new envoy::extensions::transport_sockets::tls::v3::TlsCertificate();
   tls_certificate->mutable_certificate_chain()->set_inline_string(default_identity_cert_);
@@ -167,7 +169,7 @@ void Provider::signCertificate(const std::string sni,
 
   X509_set_issuer_name(crt, X509_get_subject_name(ca_cert.get()));
   X509_gmtime_adj(X509_get_notBefore(crt), 0);
-  X509_gmtime_adj(X509_get_notAfter(crt), 2 * 365 * 24 * 3600);
+  X509_gmtime_adj(X509_get_notAfter(crt), valid_seconds_);
   X509_set_subject_name(crt, X509_REQ_get_subject_name(req));
   EVP_PKEY* req_pubkey = X509_REQ_get_pubkey(req);
   X509_set_pubkey(crt, req_pubkey);

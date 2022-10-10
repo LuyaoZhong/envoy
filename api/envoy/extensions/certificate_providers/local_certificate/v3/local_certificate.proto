@@ -4,7 +4,10 @@ package envoy.extensions.certificate_providers.local_certificate.v3;
 
 import "envoy/config/core/v3/base.proto";
 
+import "google/protobuf/wrappers.proto";
+
 import "udpa/annotations/status.proto";
+import "validate/validate.proto";
 
 option java_package = "io.envoyproxy.envoy.extensions.certificate_providers.local_certificate.v3";
 option java_outer_classname = "LocalCertificateProto";
@@ -25,4 +28,6 @@ message LocalCertificate {
   config.core.v3.DataSource default_identity_cert = 3;
 
   config.core.v3.DataSource default_identity_key = 4;
+
+  google.protobuf.UInt32Value valid_seconds = 5 [(validate.rules).uint32 = {gte: 1}];
 }
