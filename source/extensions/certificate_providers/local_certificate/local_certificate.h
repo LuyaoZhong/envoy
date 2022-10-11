@@ -64,7 +64,7 @@ private:
   std::string ca_key_;
   std::string default_identity_cert_;
   std::string default_identity_key_;
-  uint32_t valid_seconds_{0};
+  SystemTime expiration_config_;
 
   Common::CallbackManager<> update_callback_manager_;
   absl::flat_hash_map<std::string, std::list<OnDemandUpdateHandleImpl*>>

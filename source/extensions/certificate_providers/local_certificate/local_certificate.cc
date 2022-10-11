@@ -23,8 +23,10 @@ Provider::Provider(const envoy::config::core::v3::TypedExtensionConfig& config,
   ca_key_ = Config::DataSource::read(message.rootca_key(), true, api);
   default_identity_cert_ = Config::DataSource::read(message.default_identity_cert(), true, api);
   default_identity_key_ = Config::DataSource::read(message.default_identity_key(), true, api);
-  // Set default valid time to 30 days
-  valid_seconds_ = PROTOBUF_GET_WRAPPED_OR_DEFAULT(message, valid_seconds, 3600 * 24 * 30);
+
+  auto seconds = google::protobuf::util::TimeUtil::TimestampToSeconds(message.expiration_time());
+  expiration_config_ = std::chrono::system_clock::from_time_t(static_cast<time_t>(seconds));
+
   // Generate TLSCertificate
   envoy::extensions::transport_sockets::tls::v3::TlsCertificate* tls_certificate = new envoy::extensions::transport_sockets::tls::v3::TlsCertificate();
   tls_certificate->mutable_certificate_chain()->set_inline_string(default_identity_cert_);
@@ -169,7 +171,20 @@ void Provider::signCertificate(const std::string sni,
 
   X509_set_issuer_name(crt, X509_get_subject_name(ca_cert.get()));
   X509_gmtime_adj(X509_get_notBefore(crt), 0);
-  X509_gmtime_adj(X509_get_notAfter(crt), valid_seconds_);
+
+
+  // Compare expiration_time config with upstream cert expiration. Use smaller
+  // value of those two dates as expiration time of mimic cert.
+  auto now = std::chrono::system_clock::now();
+  uint64_t valid_seconds = std::chrono::duration_cast<std::chrono::seconds>(expiration_config_ - now).count();
+  if (metadata->connectionInfo()->expirationPeerCertificate()) {
+    if (metadata->connectionInfo()->expirationPeerCertificate().value() <= expiration_config_) {
+        valid_seconds =
+          std::chrono::duration_cast<std::chrono::seconds>(metadata->connectionInfo()->expirationPeerCertificate().value() - now).count();
+    }
+  }
+
+  X509_gmtime_adj(X509_get_notAfter(crt), valid_seconds);
   X509_set_subject_name(crt, X509_REQ_get_subject_name(req));
   EVP_PKEY* req_pubkey = X509_REQ_get_pubkey(req);
   X509_set_pubkey(crt, req_pubkey);
