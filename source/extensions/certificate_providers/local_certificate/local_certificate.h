@@ -56,9 +56,14 @@ private:
   //void signCertificate(std::string sni, absl::Span<const std::string> dns_sans, const std::string subject,
   //                     Event::Dispatcher& thread_local_dispatcher);
   void signCertificate(const std::string sni,
+                       std::vector<std::string> common_names,
                        Envoy::CertificateProvider::OnDemandUpdateMetadataPtr metadata,
                        Event::Dispatcher& thread_local_dispatcher);
   void setSubject(absl::string_view subject, X509_NAME* x509_name);
+
+  // Get URIs from SAN field of upstream cert, if SAN field is empty, return common name from Subject field.
+  std::vector<std::string> getCommonNames(Envoy::CertificateProvider::OnDemandUpdateMetadataPtr metadata);
+
   Event::Dispatcher& main_thread_dispatcher_;
   std::string ca_cert_;
   std::string ca_key_;
@@ -69,6 +74,7 @@ private:
   Common::CallbackManager<> update_callback_manager_;
   absl::flat_hash_map<std::string, std::list<OnDemandUpdateHandleImpl*>>
       on_demand_update_callbacks_;
+  absl::flat_hash_map<std::string, bool> sites_cache_;
 };
 } // namespace LocalCertificate
 } // namespace CertificateProviders
