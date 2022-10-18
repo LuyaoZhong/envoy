@@ -66,24 +66,28 @@ Envoy::CertificateProvider::OnDemandUpdateHandlePtr Provider::addOnDemandUpdateC
   auto handle = std::make_unique<OnDemandUpdateHandleImpl>(
       on_demand_update_callbacks_, sni, callback);
 
-  // TODO: we need to improve this cache_hit check
-  // It is possible that two SNIs use the same cert, so they share the same SANs.
-  // if we generate two mimic certs for these SNIs, it can not pass the certs config check
-  // since we do not allow duplicated SANs.
-  // We need to align this cache_hit with current transport socket behavior
-  bool cache_hit = [&]() {
+  // TODO: Refactor may needed. Here we assume that SANs overlap of different
+  // sites won't happen. So if any name of SAN fields exists in sites_cache_,
+  // we already have the cert in cache and no need to generate a new one.
+  auto common_names = getCommonNames(metadata);
+  bool cache_hit = [&common_names, this]() {
     absl::ReaderMutexLock reader_lock{&certificates_lock_};
-    auto it = certificates_.find(sni);
-    return it != certificates_.end() ? true : false;
+    for (auto& name: common_names) {
+      if (sites_cache_.find(name) != sites_cache_.end()) {
+        return true;
+      }
+    }
+    return false;
   }();
 
+  ENVOY_LOG(debug, "Local certificate provider cache hit for {}: {}", sni, cache_hit);
   if (cache_hit) {
     // Cache hit, run on-demand update callback directly
     runOnDemandUpdateCallback(sni, thread_local_dispatcher, true);
   } else {
     // Cache miss, generate self-signed cert
-    main_thread_dispatcher_.post([sni, metadata, &thread_local_dispatcher, this] {
-      signCertificate(sni, metadata, thread_local_dispatcher); });
+    main_thread_dispatcher_.post([sni, metadata, common_names, &thread_local_dispatcher, this] {
+      signCertificate(sni, common_names, metadata, thread_local_dispatcher); });
   }
   return handle;
 }
@@ -113,9 +117,8 @@ void Provider::runOnDemandUpdateCallback(const std::string& host,
   }
 }
 
-// TODO: we meed to copy more information of original cert, such as SANs, the whole subject,
-// expiration time, etc.
 void Provider::signCertificate(const std::string sni,
+                               std::vector<std::string> common_names,
                                ::Envoy::CertificateProvider::OnDemandUpdateMetadataPtr metadata,
                                Event::Dispatcher& thread_local_dispatcher) {
   bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(const_cast<char*>(ca_cert_.data()), ca_cert_.size()));
@@ -213,11 +216,13 @@ void Provider::signCertificate(const std::string sni,
   tls_certificate->mutable_certificate_chain()->set_inline_string(cert_pem);
   tls_certificate->mutable_private_key()->set_inline_string(key_pem);
 
-  // Update certificates_ map
+  // Update certificates_ and sites_cache map
   {
     absl::WriterMutexLock writer_lock{&certificates_lock_};
-    certificates_.try_emplace(
-        sni, tls_certificate);
+      certificates_.try_emplace(sni, tls_certificate);
+  }
+  for (auto& name: common_names) {
+    sites_cache_.insert({name, true});
   }
 
   runAddUpdateCallback();
@@ -243,6 +248,29 @@ void Provider::setSubject(absl::string_view subject, X509_NAME* x509_name) {
       item.clear();
     }
   }
+}
+
+std::vector<std::string> Provider::getCommonNames(Envoy::CertificateProvider::OnDemandUpdateMetadataPtr metadata) {
+  std::vector<std::string> common_names;
+  const auto& sans = metadata->connectionInfo()->dnsSansPeerCertificate();
+  if (!sans.empty()) {
+    common_names.insert(common_names.begin(), sans.begin(), sans.end());
+  }
+  else {
+    auto& subject = metadata->connectionInfo()->subjectPeerCertificate();
+    if (auto start = subject.find("CN="); start != std::string::npos) {
+      auto end = subject.find(",", start);
+      std::string cn;
+      if (end != std::string::npos) {
+        cn = subject.substr(start + 3, end - start - 3);
+      }
+      else {
+        cn = subject.substr(start + 3, subject.size() - 3);
+      }
+      common_names.push_back(cn);
+    }
+  }
+  return common_names;
 }
 } // namespace LocalCertificate
 } // namespace CertificateProviders
