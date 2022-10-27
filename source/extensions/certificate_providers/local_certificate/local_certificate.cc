@@ -30,7 +30,7 @@ Provider::Provider(const envoy::config::core::v3::TypedExtensionConfig& config,
   }
 
   // Generate TLSCertificate
-  envoy::extensions::transport_sockets::tls::v3::TlsCertificate* tls_certificate = new envoy::extensions::transport_sockets::tls::v3::TlsCertificate();
+  TlsCertificateSharedPtr tls_certificate = std::make_shared<envoy::extensions::transport_sockets::tls::v3::TlsCertificate>();
   tls_certificate->mutable_certificate_chain()->set_inline_string(default_identity_cert_);
   tls_certificate->mutable_private_key()->set_inline_string(default_identity_key_);
   // Update certificates_ map
@@ -209,7 +209,7 @@ void Provider::signCertificate(const std::string sni,
   std::string key_pem(reinterpret_cast<const char*>(output), length);
 
   // Generate TLSCertificate
-  envoy::extensions::transport_sockets::tls::v3::TlsCertificate* tls_certificate = new envoy::extensions::transport_sockets::tls::v3::TlsCertificate();
+  TlsCertificateSharedPtr tls_certificate = std::make_shared<envoy::extensions::transport_sockets::tls::v3::TlsCertificate>();
   tls_certificate->mutable_certificate_chain()->set_inline_string(cert_pem);
   tls_certificate->mutable_private_key()->set_inline_string(key_pem);
 
