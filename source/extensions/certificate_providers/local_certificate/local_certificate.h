@@ -13,6 +13,9 @@ namespace Extensions {
 namespace CertificateProviders {
 namespace LocalCertificate {
 
+using TlsCertificateSharedPtr =
+    std::shared_ptr<envoy::extensions::transport_sockets::tls::v3::TlsCertificate>;
+
 // Local cert provider
 class Provider : public CertificateProvider::CertificateProvider,
                  Logger::Loggable<Logger::Id::cert_provider> {
@@ -46,8 +49,7 @@ private:
   };
 
   mutable absl::Mutex certificates_lock_;
-  absl::flat_hash_map<std::string,
-                      const envoy::extensions::transport_sockets::tls::v3::TlsCertificate*>
+  absl::flat_hash_map<std::string, TlsCertificateSharedPtr>
       certificates_ ABSL_GUARDED_BY(certificates_lock_);
 
   void runAddUpdateCallback();
