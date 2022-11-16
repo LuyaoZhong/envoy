@@ -71,6 +71,7 @@ private:
   Common::CallbackManager<> update_callback_manager_;
   absl::flat_hash_map<std::string, std::list<OnDemandUpdateHandleImpl*>>
       on_demand_update_callbacks_;
+  const uint32_t max_hosts_;
 };
 } // namespace LocalCertificate
 } // namespace CertificateProviders
