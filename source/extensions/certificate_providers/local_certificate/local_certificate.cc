@@ -13,7 +13,8 @@ namespace LocalCertificate {
 Provider::Provider(const envoy::extensions::certificate_providers::local_certificate::v3::LocalCertificate& config,
                    Server::Configuration::TransportSocketFactoryContext& factory_context,
                    Api::Api& api)
-    : main_thread_dispatcher_(factory_context.mainThreadDispatcher()) {
+    : main_thread_dispatcher_(factory_context.mainThreadDispatcher()),
+      max_certs_(PROTOBUF_GET_WRAPPED_OR_DEFAULT(config, cert_cache_size, 1024)) {
   ca_cert_ = Config::DataSource::read(config.rootca_cert(), true, api);
   ca_key_ = Config::DataSource::read(config.rootca_key(), true, api);
   default_identity_cert_ = Config::DataSource::read(config.default_identity_cert(), true, api);
@@ -74,6 +75,7 @@ Envoy::CertificateProvider::OnDemandUpdateHandlePtr Provider::addOnDemandUpdateC
   }();
 
   if (cache_hit) {
+    ENVOY_LOG(debug, "Cache hit for {}", sni);
     // Cache hit, run on-demand update callback directly
     runOnDemandUpdateCallback(sni, thread_local_dispatcher, true);
   } else {
@@ -161,6 +163,11 @@ void Provider::signCertificate(const std::string sni,
   // Update certificates_ map
   {
     absl::WriterMutexLock writer_lock{&certificates_lock_};
+    // If cache is full, remove first element in the map
+    if (certificates_.size() >= max_hosts_) {
+      certificates_.erase(certificates_.begin());
+      ENVOY_LOG(debug, "Cache is full, remove an entry before inserting");
+    }
     certificates_.try_emplace(sni, tls_certificate);
   }
 
