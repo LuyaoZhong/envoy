@@ -315,7 +315,7 @@ int ConnectionInfoImplBase::pkeySizePeerCertificate() const {
     return EC_GROUP_get_curve_name(ecdsa_group);
   } break;
   case EVP_PKEY_RSA: {
-    return RSA_size(EVP_PKEY_get0_RSA(public_key.get())) * 8;
+    return RSA_bits(EVP_PKEY_get0_RSA(public_key.get()));
   } break;
   }
   return -1;
